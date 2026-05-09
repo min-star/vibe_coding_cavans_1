@@ -204,6 +204,15 @@ function EditorInner() {
       return;
     }
 
+    updateNodeLocal({
+      ...node,
+      status: 'pending',
+      data: {
+        ...node.data,
+        prompt: String(node.data.prompt || node.data.label || '')
+      }
+    });
+
     const references = edges
       .filter((edge) => edge.target === node.id)
       .map((edge) => {

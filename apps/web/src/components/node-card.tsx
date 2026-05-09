@@ -34,6 +34,7 @@ function NodeCardImpl({
   const [draftPrompt, setDraftPrompt] = useState(String(node.data.prompt || ''));
   const [hovered, setHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [fakeProgress, setFakeProgress] = useState(12);
 
   useEffect(() => {
     if (isEditing) {
@@ -49,6 +50,24 @@ function NodeCardImpl({
     }
     editorRef.current.innerText = draftPrompt;
   }, [draftPrompt, isText]);
+
+  useEffect(() => {
+    if (node.status !== 'pending' && node.status !== 'running') {
+      setFakeProgress(12);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setFakeProgress((current) => {
+        if (current >= 92) {
+          return current;
+        }
+        return current + Math.max(2, Math.round((100 - current) / 10));
+      });
+    }, 240);
+
+    return () => window.clearInterval(timer);
+  }, [node.status]);
 
   function commitPrompt(nextPrompt: string) {
     if (!onChange) {
@@ -124,6 +143,15 @@ function NodeCardImpl({
           >
             {draftPrompt || '双击开始编辑...'}
           </div>
+          {node.status === 'pending' || node.status === 'running' ? (
+            <div style={loadingOverlayStyle} className="nodrag nopan">
+              <div style={loadingTitleStyle}>模型生成中...</div>
+              <div style={loadingBarTrackStyle}>
+                <div style={{ ...loadingBarFillStyle, width: `${fakeProgress}%` }} />
+              </div>
+              <div style={loadingHintStyle}>{`${fakeProgress}%`}</div>
+            </div>
+          ) : null}
         </div>
 
         {selected ? (
@@ -278,6 +306,7 @@ function NodeCardImpl({
                     className="nodrag nopan"
                     type="button"
                     style={submitButtonStyle}
+                    disabled={node.status === 'pending' || node.status === 'running'}
                     onClick={() => {
                       commitPrompt(draftPrompt);
                       setIsEditing(false);
@@ -434,19 +463,26 @@ const textNodeHeaderStyle = {
 } as const;
 
 const textNodeBoxStyle = {
-  minHeight: 470,
+  height: 470,
   borderRadius: 30,
   background: '#222222',
   border: '1px solid rgba(255,255,255,0.15)',
   padding: 28,
-  boxShadow: '0 14px 40px rgba(0,0,0,0.38)'
+  boxShadow: '0 14px 40px rgba(0,0,0,0.38)',
+  position: 'relative',
+  overflow: 'hidden'
 } as const;
 
 const textPromptStyle = {
   lineHeight: 1.5,
   whiteSpace: 'pre-wrap',
   outline: 'none',
-  minHeight: 380
+  height: '100%',
+  minHeight: 380,
+  maxHeight: 410,
+  overflowY: 'auto',
+  wordBreak: 'break-word',
+  paddingRight: 6
 } as const;
 
 const toolbarStyle = {
@@ -554,6 +590,43 @@ const submitButtonStyle = {
   color: '#ffffff',
   cursor: 'pointer',
   padding: '0 18px'
+} as const;
+
+const loadingOverlayStyle = {
+  position: 'absolute',
+  inset: 0,
+  background: 'rgba(17,17,17,0.72)',
+  display: 'grid',
+  alignContent: 'center',
+  gap: 14,
+  padding: 32,
+  backdropFilter: 'blur(1px)'
+} as const;
+
+const loadingTitleStyle = {
+  fontSize: 22,
+  color: '#f5f5f5',
+  fontWeight: 600
+} as const;
+
+const loadingBarTrackStyle = {
+  width: '100%',
+  height: 14,
+  borderRadius: 999,
+  background: 'rgba(255,255,255,0.12)',
+  overflow: 'hidden'
+} as const;
+
+const loadingBarFillStyle = {
+  height: '100%',
+  borderRadius: 999,
+  background: 'linear-gradient(90deg, #60a5fa 0%, #f5f5f5 100%)',
+  transition: 'width 180ms ease'
+} as const;
+
+const loadingHintStyle = {
+  color: 'rgba(255,255,255,0.72)',
+  fontSize: 14
 } as const;
 
 const deleteChipStyle = {

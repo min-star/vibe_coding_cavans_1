@@ -282,8 +282,29 @@ function EditorInner() {
       const task = await apiRequest<{
         status: 'pending' | 'running' | 'success' | 'failed';
         errorMessage?: string;
+        nodeId?: string;
+        result?: Record<string, unknown>;
       }>(`/tasks/${taskId}`, { token });
       if (task.status === 'success' || task.status === 'failed') {
+        if (task.status === 'success' && task.nodeId && task.result) {
+          const currentNode = allNodes.find((item) => item.id === task.nodeId);
+          if (currentNode) {
+            updateNodeLocal({
+              ...currentNode,
+              status: 'success',
+              output: task.result
+            });
+          }
+        }
+        if (task.status === 'failed' && task.nodeId) {
+          const currentNode = allNodes.find((item) => item.id === task.nodeId);
+          if (currentNode) {
+            updateNodeLocal({
+              ...currentNode,
+              status: 'failed'
+            });
+          }
+        }
         await loadCanvas();
         if (task.status === 'failed') {
           alert(task.errorMessage || '生成失败');

@@ -31,25 +31,29 @@ function NodeCardImpl({
   const isImageUpload = node.type === 'image_upload';
   const isImageUpscale = node.type === 'image_upscale';
   const editorRef = useRef<HTMLDivElement | null>(null);
-  const [draftPrompt, setDraftPrompt] = useState(String(node.data.prompt || ''));
+  const [inputPrompt, setInputPrompt] = useState(String(node.data.prompt || ''));
   const [hovered, setHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isInlineEditing, setIsInlineEditing] = useState(false);
   const [fakeProgress, setFakeProgress] = useState(12);
+  const displayText = outputText || String(node.data.prompt || '');
 
   useEffect(() => {
-    if (isEditing) {
-      return;
-    }
-    const nextValue = String(node.output?.text || node.data.prompt || '');
-    setDraftPrompt(nextValue);
-  }, [node.data.prompt, node.output?.text, node.id, isEditing]);
+    setInputPrompt(String(node.data.prompt || ''));
+  }, [node.data.prompt, node.id]);
 
   useEffect(() => {
-    if (!isText || !editorRef.current || document.activeElement === editorRef.current) {
+    if (
+      !isText ||
+      !isInlineEditing ||
+      !editorRef.current ||
+      document.activeElement === editorRef.current
+    ) {
       return;
     }
-    editorRef.current.innerText = draftPrompt;
-  }, [draftPrompt, isText]);
+    editorRef.current.innerText = inputPrompt;
+    editorRef.current.focus();
+  }, [inputPrompt, isInlineEditing, isText]);
 
   useEffect(() => {
     if (node.status !== 'pending' && node.status !== 'running') {
@@ -119,30 +123,47 @@ function NodeCardImpl({
             borderColor: selected ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'
           }}
         >
-          <div
-            ref={editorRef}
-            className="nodrag nopan"
-            contentEditable
-            suppressContentEditableWarning
-            spellCheck={false}
-            style={{
-              ...textPromptStyle,
-              ...textStyle
-            }}
-            onFocus={() => setIsEditing(true)}
-            onInput={(event) => {
-              const nextPrompt = event.currentTarget.innerText;
-              setDraftPrompt(nextPrompt);
-            }}
-            onBlur={(event) => {
-              const nextPrompt = event.currentTarget.innerText;
-              setDraftPrompt(nextPrompt);
-              commitPrompt(nextPrompt);
-              setIsEditing(false);
-            }}
-          >
-            {draftPrompt || '双击开始编辑...'}
-          </div>
+          {isInlineEditing ? (
+            <div
+              ref={editorRef}
+              className="nodrag nopan"
+              contentEditable
+              suppressContentEditableWarning
+              spellCheck={false}
+              style={{
+                ...textPromptStyle,
+                ...textStyle
+              }}
+              onFocus={() => setIsEditing(true)}
+              onInput={(event) => {
+                const nextPrompt = event.currentTarget.innerText;
+                setInputPrompt(nextPrompt);
+              }}
+              onBlur={(event) => {
+                const nextPrompt = event.currentTarget.innerText;
+                setInputPrompt(nextPrompt);
+                commitPrompt(nextPrompt);
+                setIsEditing(false);
+                setIsInlineEditing(false);
+              }}
+            >
+              {inputPrompt || '双击开始编辑...'}
+            </div>
+          ) : (
+            <div
+              className="nodrag nopan"
+              style={{
+                ...textPromptStyle,
+                ...textStyle
+              }}
+              onDoubleClick={() => {
+                setIsInlineEditing(true);
+                setInputPrompt(String(node.data.prompt || inputPrompt || ''));
+              }}
+            >
+              {displayText || '双击开始编辑...'}
+            </div>
+          )}
           {node.status === 'pending' || node.status === 'running' ? (
             <div style={loadingOverlayStyle} className="nodrag nopan">
               <div style={loadingTitleStyle}>模型生成中...</div>
@@ -246,12 +267,12 @@ function NodeCardImpl({
             <div style={generatorPanelStyle} className="nodrag nopan">
               <textarea
                 className="nodrag nopan"
-                value={draftPrompt}
+                value={inputPrompt}
                 onChange={(event) => {
                   const nextPrompt = event.target.value;
-                  setDraftPrompt(nextPrompt);
+                  setInputPrompt(nextPrompt);
                 }}
-                onBlur={() => commitPrompt(draftPrompt)}
+                onBlur={() => commitPrompt(inputPrompt)}
                 placeholder="描述任何你想要生成的内容"
                 rows={4}
                 style={generatorTextareaStyle}
@@ -308,13 +329,13 @@ function NodeCardImpl({
                     style={submitButtonStyle}
                     disabled={node.status === 'pending' || node.status === 'running'}
                     onClick={() => {
-                      commitPrompt(draftPrompt);
+                      commitPrompt(inputPrompt);
                       setIsEditing(false);
                       onRun?.({
                         ...node,
                         data: {
                           ...node.data,
-                          prompt: draftPrompt
+                          prompt: inputPrompt
                         }
                       });
                     }}

@@ -1,6 +1,12 @@
 import { env } from '../config/env.js';
 import type { ModelRegistryItem } from '../types/providers.js';
 
+function normalizeOpenAiCompatibleBaseUrl(baseUrl: string) {
+  return baseUrl
+    .replace(/\/chat\/completions\/?$/i, '')
+    .replace(/\/+$/g, '');
+}
+
 function buildMockText(prompt: string, references: string[], quantity: number) {
   const outputs = Array.from({ length: quantity }, (_, index) => {
     return `Option ${index + 1}\n\nCreative concept: ${prompt}\n\nVisual cues: ${references.join(', ') || 'minimal clean layout'}\n\nSuggested direction: Use cinematic framing, crisp focal subject, and one strong emotional beat.`;
@@ -23,7 +29,7 @@ export async function generateTextWithModel(params: {
 
   if (model.provider === 'openai-compatible') {
     const apiKey = process.env[model.apiKeyEnv || 'OPENAI_API_KEY'] || env.openAiApiKey;
-    const baseUrl = model.baseUrl || env.openAiBaseUrl;
+    const baseUrl = normalizeOpenAiCompatibleBaseUrl(model.baseUrl || env.openAiBaseUrl);
 
     if (!apiKey) {
       throw new Error(`Missing API key for model ${model.id}`);

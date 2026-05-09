@@ -258,13 +258,14 @@ export function createTask(params: {
   if (!node) {
     return undefined;
   }
+  const modelId = String(params.input.model || '');
   const task: Task = {
     id: nanoid(),
     userId: params.userId,
     canvasId: params.canvasId,
     nodeId: params.nodeId,
     taskType: params.taskType,
-    provider: 'mock-provider',
+    provider: modelId || 'mock-provider',
     status: 'pending',
     input: params.input,
     createdAt: nowIso()

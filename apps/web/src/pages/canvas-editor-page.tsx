@@ -251,17 +251,25 @@ function EditorInner() {
       quantity: Number(node.data.quantity || 1)
     };
 
-    const task = await apiRequest<{ taskId: string; status: string }>(endpoint, {
-      method: 'POST',
-      token,
-      body: {
-        canvasId,
-        nodeId: node.id,
-        input
-      }
-    });
+    try {
+      const task = await apiRequest<{ taskId: string; status: string }>(endpoint, {
+        method: 'POST',
+        token,
+        body: {
+          canvasId,
+          nodeId: node.id,
+          input
+        }
+      });
 
-    await pollTask(task.taskId);
+      await pollTask(task.taskId);
+    } catch (error) {
+      updateNodeLocal({
+        ...node,
+        status: 'failed'
+      });
+      alert(error instanceof Error ? error.message : '生成失败');
+    }
   }
 
   async function pollTask(taskId: string) {
@@ -273,9 +281,13 @@ function EditorInner() {
     while (count < 20) {
       const task = await apiRequest<{
         status: 'pending' | 'running' | 'success' | 'failed';
+        errorMessage?: string;
       }>(`/tasks/${taskId}`, { token });
       if (task.status === 'success' || task.status === 'failed') {
         await loadCanvas();
+        if (task.status === 'failed') {
+          alert(task.errorMessage || '生成失败');
+        }
         return;
       }
       count += 1;

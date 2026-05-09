@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addEdge,
+  applyNodeChanges,
   Background,
   Connection,
   Controls,
@@ -12,6 +13,7 @@ import {
   type ReactFlowInstance,
   ReactFlow,
   ReactFlowProvider,
+  type NodeChange,
   useEdgesState,
   useNodesState
 } from '@xyflow/react';
@@ -118,6 +120,7 @@ function EditorInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const allNodesRef = useRef<CanvasNode[]>([]);
+  const flowNodesRef = useRef<Node<FlowNodeData>[]>([]);
 
   const selectedNode = useMemo(
     () => allNodes.find((node) => node.id === selectedNodeId) || null,
@@ -135,25 +138,103 @@ function EditorInner() {
         ? nextNodesOrUpdater(allNodesRef.current)
         : nextNodesOrUpdater;
 
+    const nextFlowNodes = nextNodes.map(toFlowNode);
     allNodesRef.current = nextNodes;
+    flowNodesRef.current = nextFlowNodes;
     setAllNodes(nextNodes);
-    setNodes(nextNodes.map(toFlowNode));
+    setNodes(nextFlowNodes);
   }
 
-  async function loadCanvas() {
+  async function fetchCanvasBundle() {
     if (!token || !canvasId) {
       return undefined;
     }
-    const data = await apiRequest<{
+
+    return apiRequest<{
       canvas: Canvas;
       nodes: CanvasNode[];
       edges: CanvasEdge[];
     }>(`/canvases/${canvasId}`, { token });
+  }
+
+  function handleNodesChange(changes: NodeChange<Node<FlowNodeData>>[]) {
+    const nextFlowNodes = applyNodeChanges(changes, flowNodesRef.current);
+    flowNodesRef.current = nextFlowNodes;
+    setNodes(nextFlowNodes);
+    const nextCanvasNodes = nextFlowNodes.map((flowNode) => fromFlowNode(flowNode, canvasId || ''));
+    allNodesRef.current = nextCanvasNodes;
+    setAllNodes(nextCanvasNodes);
+  }
+
+  async function loadCanvas() {
+    const data = await fetchCanvasBundle();
+    if (!data) {
+      return undefined;
+    }
 
     setCanvas(data.canvas);
     syncNodes(data.nodes);
     setEdges(data.edges.map(toFlowEdge));
     return data;
+  }
+
+  async function syncNodeResultAfterTaskSuccess(nodeId: string, fallbackResult?: Record<string, unknown>) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const data = await fetchCanvasBundle();
+      if (data) {
+        const matchedNode = data.nodes.find((item) => item.id === nodeId);
+        const hasVisualOutput = Boolean(
+          matchedNode?.output?.thumbnailUrl ||
+            matchedNode?.output?.fileUrl ||
+            matchedNode?.output?.text ||
+            matchedNode?.data.previewUrl
+        );
+
+        if (matchedNode?.status === 'success' && hasVisualOutput) {
+          setCanvas(data.canvas);
+          syncNodes(data.nodes);
+          setEdges(data.edges.map(toFlowEdge));
+          return {
+            status: 'success' as const,
+            node: matchedNode
+          };
+        }
+      }
+
+      const currentNode = allNodesRef.current.find((item) => item.id === nodeId);
+      if (fallbackResult && currentNode) {
+        const resultImageUrl =
+          typeof fallbackResult.thumbnailUrl === 'string'
+            ? fallbackResult.thumbnailUrl
+            : typeof fallbackResult.fileUrl === 'string'
+              ? fallbackResult.fileUrl
+              : currentNode.data.previewUrl;
+
+        updateNodeLocal({
+          ...currentNode,
+          status: 'success',
+          data: {
+            ...currentNode.data,
+            previewUrl: currentNode.type === 'text' ? currentNode.data.previewUrl : resultImageUrl
+          },
+          output: {
+            ...(currentNode.output || {}),
+            ...fallbackResult
+          }
+        });
+
+        return {
+          status: 'success' as const,
+          node: currentNode
+        };
+      }
+
+      await new Promise((resolve) => window.setTimeout(resolve, 300));
+    }
+
+    return {
+      status: 'timeout' as const
+    };
   }
 
   async function loadAssets() {
@@ -315,7 +396,7 @@ function EditorInner() {
         }
       });
 
-      await pollTask(task.taskId);
+      await pollNodeResult(task.taskId, node.id);
     } catch (error) {
       updateNodeLocal({
         ...node,
@@ -325,63 +406,51 @@ function EditorInner() {
     }
   }
 
-  async function pollTask(taskId: string) {
+  async function pollNodeResult(taskId: string, nodeId: string) {
     if (!token) {
       return;
     }
 
-    let count = 0;
-    while (count < 20) {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
       const task = await apiRequest<{
         status: 'pending' | 'running' | 'success' | 'failed';
         errorMessage?: string;
         nodeId?: string;
         result?: Record<string, unknown>;
       }>(`/tasks/${taskId}`, { token });
-      if (task.status === 'success' || task.status === 'failed') {
-        if (task.status === 'success' && task.nodeId && task.result) {
-          const currentNode = allNodesRef.current.find((item) => item.id === task.nodeId);
-          if (currentNode) {
-            const resultImageUrl =
-              typeof task.result.thumbnailUrl === 'string'
-                ? task.result.thumbnailUrl
-                : typeof task.result.fileUrl === 'string'
-                  ? task.result.fileUrl
-                  : currentNode.data.previewUrl;
-            updateNodeLocal({
-              ...currentNode,
-              status: 'success',
-              data: {
-                ...currentNode.data,
-                previewUrl: currentNode.type === 'text' ? currentNode.data.previewUrl : resultImageUrl
-              },
-              output: {
-                ...(currentNode.output || {}),
-                ...task.result
-              }
-            });
-          }
+
+      if (task.status === 'failed') {
+        const currentNode = allNodesRef.current.find((item) => item.id === nodeId);
+        if (currentNode) {
+          updateNodeLocal({
+            ...currentNode,
+            status: 'failed'
+          });
         }
-        if (task.status === 'failed' && task.nodeId) {
-          const currentNode = allNodesRef.current.find((item) => item.id === task.nodeId);
-          if (currentNode) {
-            updateNodeLocal({
-              ...currentNode,
-              status: 'failed'
-            });
-          }
-        }
-        window.setTimeout(() => {
-          void loadCanvas();
-        }, 120);
-        if (task.status === 'failed') {
-          alert(task.errorMessage || '生成失败');
+        alert(task.errorMessage || '生成失败');
+        return;
+      }
+
+      if (task.status === 'success') {
+        const result = await syncNodeResultAfterTaskSuccess(nodeId, task.result);
+
+        if (result.status === 'timeout') {
+          await loadCanvas();
         }
         return;
       }
-      count += 1;
+
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
     }
+
+    const currentNode = allNodesRef.current.find((item) => item.id === nodeId);
+    if (currentNode) {
+      updateNodeLocal({
+        ...currentNode,
+        status: 'failed'
+      });
+    }
+    alert('生成等待超时，请稍后再试。');
   }
 
   async function shareCanvas() {
@@ -675,7 +744,7 @@ function EditorInner() {
           nodes={nodes}
           edges={edges}
           onInit={setFlowInstance}
-          onNodesChange={onNodesChange}
+          onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
           onPaneClick={handlePaneClick}

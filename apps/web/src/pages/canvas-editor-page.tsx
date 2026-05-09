@@ -20,7 +20,18 @@ import { useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client';
 import { NodeCard } from '../components/node-card';
 import { useAuthGuard } from '../hooks/use-auth-guard';
-import type { Asset, Canvas, CanvasEdge, CanvasNode, ModelOption, NodeType, ShareResponse } from '../types';
+import type {
+  Asset,
+  Canvas,
+  CanvasEdge,
+  CanvasNode,
+  ModelOption,
+  ModelRegistryResponse,
+  NodeType,
+  ShareResponse
+} from '../types';
+
+const IMAGE_ASPECT_RATIO_DEFAULT: CanvasNode['data']['aspectRatio'] = '1:1';
 
 type FlowNodeData = {
   node: CanvasNode;
@@ -30,10 +41,25 @@ function toFlowNode(node: CanvasNode): Node<FlowNodeData> {
   return {
     id: node.id,
     position: node.position,
-    data: { node },
+    data: {
+      node: {
+        ...node,
+        data: {
+          ...node.data
+        },
+        output: node.output
+          ? {
+              ...node.output
+            }
+          : undefined
+      }
+    },
     type: 'default',
     draggable: true,
-    dragHandle: node.type === 'text' ? '.node-drag-handle' : undefined,
+    dragHandle:
+      node.type === 'text' || node.type === 'image_upload' || node.type === 'image_upscale'
+        ? '.node-drag-handle'
+        : undefined,
     selectable: true,
     connectable: true,
     style: {
@@ -78,7 +104,8 @@ function EditorInner() {
   const [allNodes, setAllNodes] = useState<CanvasNode[]>([]);
   const [shareResponse, setShareResponse] = useState<ShareResponse | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [textModelOptions, setTextModelOptions] = useState<ModelOption[]>([]);
+  const [imageModelOptions, setImageModelOptions] = useState<ModelOption[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
   const flowOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -90,25 +117,32 @@ function EditorInner() {
   } | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowNodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const allNodesRef = useRef<CanvasNode[]>([]);
 
   const selectedNode = useMemo(
     () => allNodes.find((node) => node.id === selectedNodeId) || null,
     [allNodes, selectedNodeId]
   );
-
   function updateNodeLocal(updatedNode: CanvasNode) {
-    const nextNodes = allNodes.map((node) => (node.id === updatedNode.id ? updatedNode : node));
-    syncNodes(nextNodes);
+    syncNodes((currentNodes) =>
+      currentNodes.map((node) => (node.id === updatedNode.id ? updatedNode : node))
+    );
   }
 
-  function syncNodes(nextNodes: CanvasNode[]) {
+  function syncNodes(nextNodesOrUpdater: CanvasNode[] | ((currentNodes: CanvasNode[]) => CanvasNode[])) {
+    const nextNodes =
+      typeof nextNodesOrUpdater === 'function'
+        ? nextNodesOrUpdater(allNodesRef.current)
+        : nextNodesOrUpdater;
+
+    allNodesRef.current = nextNodes;
     setAllNodes(nextNodes);
     setNodes(nextNodes.map(toFlowNode));
   }
 
   async function loadCanvas() {
     if (!token || !canvasId) {
-      return;
+      return undefined;
     }
     const data = await apiRequest<{
       canvas: Canvas;
@@ -119,6 +153,7 @@ function EditorInner() {
     setCanvas(data.canvas);
     syncNodes(data.nodes);
     setEdges(data.edges.map(toFlowEdge));
+    return data;
   }
 
   async function loadAssets() {
@@ -130,8 +165,9 @@ function EditorInner() {
   }
 
   async function loadModels() {
-    const data = await apiRequest<{ models: ModelOption[] }>('/models');
-    setModelOptions(data.models.filter((item) => item.taskTypes.includes('text_generate')));
+    const data = await apiRequest<ModelRegistryResponse>('/models');
+    setTextModelOptions(data.textModels);
+    setImageModelOptions(data.imageModels);
   }
 
   async function addNode(type: NodeType, customPosition?: { x: number; y: number }) {
@@ -153,10 +189,21 @@ function EditorInner() {
             data: {
               ...data.node.data,
               label: 'Text',
-              model: modelOptions[0]?.id || 'mock-text',
+              model: textModelOptions[0]?.id || 'mock-text',
               quantity: 1
             }
           }
+        : type === 'image_upload'
+          ? {
+              ...data.node,
+              data: {
+                ...data.node.data,
+                label: 'Image',
+                model: imageModelOptions[0]?.id || 'mock-image',
+                quantity: 1,
+                aspectRatio: IMAGE_ASPECT_RATIO_DEFAULT
+              }
+            }
         : data.node;
     const nextNodes = [...allNodes, normalizedNode];
     syncNodes(nextNodes);
@@ -213,10 +260,11 @@ function EditorInner() {
       }
     });
 
+    const currentNodes = allNodesRef.current;
     const references = edges
       .filter((edge) => edge.target === node.id)
       .map((edge) => {
-        const sourceNode = allNodes.find((item) => item.id === edge.source);
+        const sourceNode = currentNodes.find((item) => item.id === edge.source);
         if (!sourceNode) {
           return edge.source;
         }
@@ -231,7 +279,7 @@ function EditorInner() {
 
     const endpointMap: Record<NodeType, string | null> = {
       text: '/tasks/text-generate',
-      image_upload: null,
+      image_upload: '/tasks/image-generate',
       image_upscale: '/tasks/image-upscale',
       video_generate: '/tasks/video-generate'
     };
@@ -247,8 +295,13 @@ function EditorInner() {
       references,
       sourceNodeIds: edges.filter((edge) => edge.target === node.id).map((edge) => edge.source),
       duration: Number(node.data.duration || 5),
-      model: String(node.data.model || modelOptions[0]?.id || 'mock-text'),
-      quantity: Number(node.data.quantity || 1)
+      model: String(
+        node.data.model ||
+          (node.type === 'text' ? textModelOptions[0]?.id : imageModelOptions[0]?.id) ||
+          (node.type === 'text' ? 'mock-text' : 'mock-image')
+      ),
+      quantity: Number(node.data.quantity || 1),
+      aspectRatio: String(node.data.aspectRatio || IMAGE_ASPECT_RATIO_DEFAULT)
     };
 
     try {
@@ -287,17 +340,30 @@ function EditorInner() {
       }>(`/tasks/${taskId}`, { token });
       if (task.status === 'success' || task.status === 'failed') {
         if (task.status === 'success' && task.nodeId && task.result) {
-          const currentNode = allNodes.find((item) => item.id === task.nodeId);
+          const currentNode = allNodesRef.current.find((item) => item.id === task.nodeId);
           if (currentNode) {
+            const resultImageUrl =
+              typeof task.result.thumbnailUrl === 'string'
+                ? task.result.thumbnailUrl
+                : typeof task.result.fileUrl === 'string'
+                  ? task.result.fileUrl
+                  : currentNode.data.previewUrl;
             updateNodeLocal({
               ...currentNode,
               status: 'success',
-              output: task.result
+              data: {
+                ...currentNode.data,
+                previewUrl: currentNode.type === 'text' ? currentNode.data.previewUrl : resultImageUrl
+              },
+              output: {
+                ...(currentNode.output || {}),
+                ...task.result
+              }
             });
           }
         }
         if (task.status === 'failed' && task.nodeId) {
-          const currentNode = allNodes.find((item) => item.id === task.nodeId);
+          const currentNode = allNodesRef.current.find((item) => item.id === task.nodeId);
           if (currentNode) {
             updateNodeLocal({
               ...currentNode,
@@ -305,7 +371,9 @@ function EditorInner() {
             });
           }
         }
-        await loadCanvas();
+        window.setTimeout(() => {
+          void loadCanvas();
+        }, 120);
         if (task.status === 'failed') {
           alert(task.errorMessage || '生成失败');
         }
@@ -354,6 +422,33 @@ function EditorInner() {
     alert('Node output saved to assets.');
   }
 
+  async function handleImageUpload(node: CanvasNode, file: File) {
+    if (!token) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    const data = await apiRequest<{ asset: Asset }>('/assets/upload', {
+      method: 'POST',
+      token,
+      formData
+    });
+
+    updateNodeLocal({
+      ...node,
+      status: 'success',
+      data: {
+        ...node.data,
+        assetId: data.asset.id,
+        previewUrl: data.asset.thumbnailUrl || data.asset.fileUrl
+      },
+      output: {
+        ...data.asset
+      }
+    });
+  }
+
   async function deleteNodeById(nodeId: string) {
     if (!token || !nodeId) {
       return;
@@ -397,6 +492,7 @@ function EditorInner() {
     if (!container) {
       return;
     }
+    const currentContainer = container;
 
     function handleDoubleClick(event: MouseEvent) {
       const target = event.target as HTMLElement;
@@ -408,7 +504,7 @@ function EditorInner() {
         return;
       }
 
-      const containerBounds = container.getBoundingClientRect();
+      const containerBounds = currentContainer.getBoundingClientRect();
       const menuWidth = 220;
       const menuHeight = 230;
       const rawX = event.clientX - containerBounds.left + 12;
@@ -426,8 +522,8 @@ function EditorInner() {
       });
     }
 
-    container.addEventListener('dblclick', handleDoubleClick, true);
-    return () => container.removeEventListener('dblclick', handleDoubleClick, true);
+    currentContainer.addEventListener('dblclick', handleDoubleClick, true);
+    return () => currentContainer.removeEventListener('dblclick', handleDoubleClick, true);
   }, [flowInstance]);
 
   useEffect(() => {
@@ -503,7 +599,7 @@ function EditorInner() {
             Add Video Node
           </button>
           <button onClick={() => void addNode('image_upload')} style={secondaryButtonStyle}>
-            Add Upload Node
+            Add Image Node
           </button>
         </div>
         <hr />
@@ -555,7 +651,7 @@ function EditorInner() {
                 void addNode('image_upload', { x: createMenu.canvasX, y: createMenu.canvasY })
               }
             >
-              上传图片
+              图片
             </button>
             <button
               style={createMenuItemStyle}
@@ -609,13 +705,15 @@ function EditorInner() {
           nodeTypes={{
             default: ({ id, data }) => (
               <NodeCard
+                key={`${id}-${String(data.node.status)}-${String(data.node.output?.thumbnailUrl || data.node.output?.fileUrl || data.node.data.previewUrl || '')}`}
                 node={data.node}
                 selected={selectedNodeId === id}
                 onChange={updateNodeLocal}
                 onRun={(node) => void runNode(node)}
                 onDelete={(node) => void deleteNodeById(node.id)}
                 onVoiceInput={handleVoiceInput}
-                modelOptions={modelOptions}
+                onImageUpload={(node, file) => void handleImageUpload(node, file)}
+                modelOptions={data.node.type === 'text' ? textModelOptions : imageModelOptions}
               />
             )
           }}

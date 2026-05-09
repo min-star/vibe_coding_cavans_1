@@ -1,10 +1,13 @@
 import { Router } from 'express';
-import { getModelRegistry } from '../services/model-registry-service.js';
+import { getAllModels, getModelRegistryBundle } from '../services/model-registry-service.js';
 
 export const modelRouter = Router();
 
 modelRouter.get('/', (_, res) => {
+  const bundle = getModelRegistryBundle();
   res.json({
-    models: getModelRegistry()
+    models: getAllModels(),
+    textModels: bundle.textModels,
+    imageModels: bundle.imageModels
   });
 });

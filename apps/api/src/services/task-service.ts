@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { env } from '../config/env.js';
 import { readDb, writeDb } from '../data/store.js';
-import { generateTextWithModel } from './llm-service.js';
+import { generateImageWithModel, generateTextWithModel } from './llm-service.js';
 import { findModelById } from './model-registry-service.js';
 import type { Asset, CanvasEdge, CanvasNode, Task, TaskType } from '../types/models.js';
 import { nowIso } from '../utils/time.js';
@@ -51,6 +52,44 @@ function writeJsonFile(filename: string, payload: Record<string, unknown>) {
   return {
     filePath: filepath,
     fileUrl: `${env.appBaseUrl}/uploads/${filename}`
+  };
+}
+
+async function saveRemoteImageToUploads(imageUrl: string) {
+  ensureUploadDir();
+
+  if (imageUrl.startsWith('data:image/')) {
+    const matches = imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error('Unsupported data image payload');
+    }
+    const mimeType = matches[1];
+    const base64 = matches[2];
+    const ext = mimeType.split('/')[1] || 'png';
+    const filename = `${nanoid()}.${ext}`;
+    const filepath = path.join(uploadDir, filename);
+    fs.writeFileSync(filepath, Buffer.from(base64, 'base64'));
+    return {
+      fileUrl: `${env.appBaseUrl}/uploads/${filename}`,
+      thumbnailUrl: `${env.appBaseUrl}/uploads/${filename}`
+    };
+  }
+
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download generated image: ${response.status}`);
+  }
+
+  const mimeType = response.headers.get('content-type') || 'image/png';
+  const ext = mimeType.includes('jpeg') ? 'jpg' : mimeType.split('/')[1] || 'png';
+  const filename = `${crypto.randomUUID()}.${ext}`;
+  const filepath = path.join(uploadDir, filename);
+  const arrayBuffer = await response.arrayBuffer();
+  fs.writeFileSync(filepath, Buffer.from(arrayBuffer));
+
+  return {
+    fileUrl: `${env.appBaseUrl}/uploads/${filename}`,
+    thumbnailUrl: `${env.appBaseUrl}/uploads/${filename}`
   };
 }
 
@@ -141,7 +180,12 @@ function scheduleTaskExecution(taskId: string) {
       const sourceNodes = getIncomingSourceNodes(db, task.canvasId, task.nodeId);
       const sourceImageNode = getFirstImageSource(sourceNodes);
       const sourceImageUrl = String(
-        sourceImageNode?.output?.fileUrl || sourceImageNode?.output?.thumbnailUrl || ''
+        sourceImageNode?.output?.fileUrl ||
+          sourceImageNode?.output?.thumbnailUrl ||
+          node.output?.fileUrl ||
+          node.output?.thumbnailUrl ||
+          node.data.previewUrl ||
+          ''
       );
 
       if (task.taskType === 'text_generate') {
@@ -167,6 +211,52 @@ function scheduleTaskExecution(taskId: string) {
         };
       }
 
+      if (task.taskType === 'image_generate') {
+        const aspectRatio = String(task.input.aspectRatio || '1:1');
+        const inputImages = sourceImageUrl ? [sourceImageUrl] : [];
+        const generated = await generateImageWithModel({
+          model: findModelById(modelId),
+          prompt,
+          references,
+          quantity,
+          aspectRatio,
+          inputImages
+        });
+        const primaryImage = generated.images[0];
+        if (!primaryImage?.url) {
+          throw new Error('Image request failed: empty primary image result');
+        }
+        const storedImage = await saveRemoteImageToUploads(primaryImage.url);
+        const asset = createAssetRecord(db, {
+          ownerId: task.userId,
+          type: 'image',
+          title: `Generated Image ${task.id.slice(0, 6)}`,
+          fileUrl: storedImage.fileUrl,
+          thumbnailUrl: storedImage.thumbnailUrl,
+          metadata: {
+            taskType: task.taskType,
+            prompt,
+            references,
+            sourceImageUrl,
+            aspectRatio,
+            quantity,
+            generatedImages: generated.images.map((item) => item.url)
+          },
+          sourceTaskId: task.id
+        });
+        task.result = {
+          ...asset
+        };
+        node.output = {
+          ...asset,
+          inputImageUrl: sourceImageUrl || undefined,
+          sourceNodeIds: sourceNodes.map((item) => item.id),
+          aspectRatio,
+          quantity,
+          generatedImages: generated.images.map((item) => item.url)
+        };
+      }
+
       if (task.taskType === 'image_upscale') {
         const image = writeSvgFile(`${task.id}.svg`, prompt || 'Image Upscale', [
           'Mode: 2x upscale mock',
@@ -188,7 +278,9 @@ function scheduleTaskExecution(taskId: string) {
           },
           sourceTaskId: task.id
         });
-        task.result = asset;
+        task.result = {
+          ...asset
+        };
         node.output = {
           ...asset,
           inputImageUrl: sourceImageUrl || undefined,
@@ -225,7 +317,9 @@ function scheduleTaskExecution(taskId: string) {
           },
           sourceTaskId: task.id
         });
-        task.result = asset;
+        task.result = {
+          ...asset
+        };
         node.output = {
           ...asset,
           inputImageUrl: sourceImageUrl || undefined,

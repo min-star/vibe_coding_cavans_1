@@ -10,6 +10,8 @@ export const env = {
   webAppUrl: process.env.WEB_APP_URL || 'http://localhost:5173',
   dataDir: path.resolve(process.cwd(), process.env.DATA_DIR || './data'),
   modelRegistryJson: process.env.MODEL_REGISTRY_JSON || '',
+  textModelRegistryJson: process.env.TEXT_MODEL_REGISTRY_JSON || '',
+  imageModelRegistryJson: process.env.IMAGE_MODEL_REGISTRY_JSON || '',
   openAiApiKey: process.env.OPENAI_API_KEY || '',
   openAiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
 };

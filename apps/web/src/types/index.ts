@@ -28,6 +28,7 @@ export interface CanvasNodeData {
   model?: string;
   quantity?: number;
   previewUrl?: string;
+  aspectRatio?: '1:1' | '4:3' | '3:4' | '16:9' | '9:16' | '3:2' | '2:3';
   textColor?: string;
   textSize?: number;
   bold?: boolean;
@@ -84,4 +85,10 @@ export interface ModelOption {
   label: string;
   provider: 'mock' | 'openai-compatible';
   taskTypes: string[];
+}
+
+export interface ModelRegistryResponse {
+  models: ModelOption[];
+  textModels: ModelOption[];
+  imageModels: ModelOption[];
 }

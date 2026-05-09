@@ -37,6 +37,7 @@ function registerTaskRoute(path: string, taskType: TaskType) {
 }
 
 registerTaskRoute('/text-generate', 'text_generate');
+registerTaskRoute('/image-generate', 'image_generate');
 registerTaskRoute('/image-upscale', 'image_upscale');
 registerTaskRoute('/video-generate', 'video_generate');
 

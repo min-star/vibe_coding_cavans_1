@@ -19,6 +19,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method || 'GET',
     headers,
+    cache: 'no-store',
     body: options.formData ?? (options.body ? JSON.stringify(options.body) : undefined)
   });
 

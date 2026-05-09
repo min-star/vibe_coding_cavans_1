@@ -9,11 +9,22 @@ type NodeCardProps = {
   onRun?: (node: CanvasNode) => void;
   onDelete?: (node: CanvasNode) => void;
   onVoiceInput?: (node: CanvasNode) => void;
+  onImageUpload?: (node: CanvasNode, file: File) => void;
   modelOptions?: ModelOption[];
 };
 
 const textSizeOptions = [18, 22, 26, 32];
 const colorOptions = ['#f5f5f5', '#facc15', '#93c5fd', '#fca5a5', '#86efac'];
+const imageAspectOptions: Array<'1:1' | '4:3' | '3:4' | '16:9' | '9:16' | '3:2' | '2:3'> = [
+  '1:1',
+  '4:3',
+  '3:4',
+  '16:9',
+  '9:16',
+  '3:2',
+  '2:3'
+];
+const imageQuantityOptions = [1, 2, 3, 4, 5, 6];
 
 function NodeCardImpl({
   node,
@@ -22,14 +33,17 @@ function NodeCardImpl({
   onRun,
   onDelete,
   onVoiceInput,
+  onImageUpload,
   modelOptions = []
 }: NodeCardProps) {
   const outputText = node.output?.text ? String(node.output.text) : undefined;
-  const outputImage = node.output?.thumbnailUrl || node.output?.fileUrl;
+  const outputImage =
+    node.output?.thumbnailUrl || node.output?.fileUrl || node.output?.inputImageUrl || node.data.previewUrl;
   const inputImage = node.output?.inputImageUrl || node.data.previewUrl;
   const isText = node.type === 'text';
   const isImageUpload = node.type === 'image_upload';
   const isImageUpscale = node.type === 'image_upscale';
+  const isImageNode = isImageUpload || isImageUpscale;
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [inputPrompt, setInputPrompt] = useState(String(node.data.prompt || ''));
   const [hovered, setHovered] = useState(false);
@@ -95,9 +109,12 @@ function NodeCardImpl({
     }),
     [node.data.bold, node.data.italic, node.data.textColor, node.data.textSize]
   );
-  const availableModels = modelOptions.length > 0
-    ? modelOptions
-    : [{ id: 'mock-text', label: 'Mock Text Model', provider: 'mock', taskTypes: ['text_generate'] }];
+  const availableModels =
+    modelOptions.length > 0
+      ? modelOptions
+      : isText
+        ? [{ id: 'mock-text', label: 'Mock Text Model', provider: 'mock', taskTypes: ['text_generate'] }]
+        : [{ id: 'mock-image', label: 'Mock Image Model', provider: 'mock', taskTypes: ['image_generate'] }];
 
   if (isText) {
     return (
@@ -354,6 +371,180 @@ function NodeCardImpl({
     );
   }
 
+  if (isImageNode) {
+    return (
+      <div
+        style={imageNodeWrapStyle}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <Handle type="target" position={Position.Left} style={textHandleStyle('left', hovered)} />
+        <Handle type="source" position={Position.Right} style={textHandleStyle('right', hovered)} />
+        {hovered ? <SidePlus side="left" /> : null}
+        {hovered ? <SidePlus side="right" /> : null}
+
+        <div style={imageNodeHeaderStyle} className="node-drag-handle">
+          <span style={{ opacity: 0.8 }}>◫</span>
+          <span>{node.data.label || 'Image'}</span>
+        </div>
+
+        {selected ? (
+          <div style={imageTopToolbarStyle} className="nodrag nopan">
+            <label style={uploadButtonStyle} className="nodrag nopan">
+              <span>⇧ 上传</span>
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    onImageUpload?.(node, file);
+                    event.target.value = '';
+                  }
+                }}
+              />
+            </label>
+          </div>
+        ) : null}
+
+        <div
+          className="node-drag-handle"
+          style={{
+            ...imageNodeBoxStyle,
+            borderColor: selected ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'
+          }}
+        >
+          {typeof outputImage === 'string' ? (
+            <img
+              src={outputImage}
+              alt="node image"
+              style={imagePreviewStyle}
+            />
+          ) : (
+            <div style={imageEmptyStyle}>🖼</div>
+          )}
+          {node.status === 'pending' || node.status === 'running' ? (
+            <div style={loadingOverlayStyle} className="nodrag nopan">
+              <div style={loadingTitleStyle}>图像生成中...</div>
+              <div style={loadingBarTrackStyle}>
+                <div style={{ ...loadingBarFillStyle, width: `${fakeProgress}%` }} />
+              </div>
+              <div style={loadingHintStyle}>{`${fakeProgress}%`}</div>
+            </div>
+          ) : null}
+        </div>
+
+        {selected ? (
+          <div style={imageBottomPanelStyle} className="nodrag nopan">
+            <textarea
+              className="nodrag nopan"
+              value={inputPrompt}
+              onChange={(event) => {
+                const nextPrompt = event.target.value;
+                setInputPrompt(nextPrompt);
+              }}
+              onBlur={() => commitPrompt(inputPrompt)}
+              placeholder="描述任何你想要生成的内容"
+              rows={4}
+              style={generatorTextareaStyle}
+            />
+
+            <div style={generatorFooterStyle}>
+              <div style={imagePanelMetaStyle}>
+                <select
+                  className="nodrag nopan"
+                  value={String(node.data.model || availableModels[0]?.id || 'mock-image')}
+                  onChange={(event) =>
+                    onChange?.({
+                      ...node,
+                      data: {
+                        ...node.data,
+                        model: event.target.value
+                      }
+                    })
+                  }
+                  style={generatorSelectStyle}
+                >
+                  {availableModels.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <select
+                  className="nodrag nopan"
+                  value={String(node.data.aspectRatio || '1:1')}
+                  onChange={(event) =>
+                    onChange?.({
+                      ...node,
+                      data: {
+                        ...node.data,
+                        aspectRatio: event.target.value as CanvasNode['data']['aspectRatio']
+                      }
+                    })
+                  }
+                  style={generatorSelectStyle}
+                >
+                  {imageAspectOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={generatorActionsStyle}>
+                <button className="nodrag nopan" type="button" style={ghostChipStyle} onClick={() => onVoiceInput?.(node)}>
+                  🎙
+                </button>
+                <select
+                  className="nodrag nopan"
+                  value={String(node.data.quantity || 1)}
+                  onChange={(event) =>
+                    onChange?.({
+                      ...node,
+                      data: {
+                        ...node.data,
+                        quantity: Number(event.target.value)
+                      }
+                    })
+                  }
+                  style={quantitySelectStyle}
+                >
+                  {imageQuantityOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="nodrag nopan"
+                  type="button"
+                  style={submitButtonStyle}
+                  disabled={node.status === 'pending' || node.status === 'running'}
+                  onClick={() => {
+                    commitPrompt(inputPrompt);
+                    onRun?.({
+                      ...node,
+                      data: {
+                        ...node.data,
+                        prompt: inputPrompt
+                      }
+                    });
+                  }}
+                >
+                  {node.status === 'pending' || node.status === 'running' ? '生成中...' : '生成'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -474,6 +665,13 @@ const textNodeWrapStyle = {
   pointerEvents: 'all'
 } as const;
 
+const imageNodeWrapStyle = {
+  position: 'relative',
+  width: 300,
+  color: '#f5f5f5',
+  pointerEvents: 'all'
+} as const;
+
 const textNodeHeaderStyle = {
   display: 'flex',
   alignItems: 'center',
@@ -481,6 +679,15 @@ const textNodeHeaderStyle = {
   margin: '0 0 14px 14px',
   fontSize: 16,
   color: 'rgba(255,255,255,0.88)'
+} as const;
+
+const imageNodeHeaderStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  margin: '0 0 12px 8px',
+  fontSize: 15,
+  color: 'rgba(255,255,255,0.84)'
 } as const;
 
 const textNodeBoxStyle = {
@@ -492,6 +699,35 @@ const textNodeBoxStyle = {
   boxShadow: '0 14px 40px rgba(0,0,0,0.38)',
   position: 'relative',
   overflow: 'hidden'
+} as const;
+
+const imageNodeBoxStyle = {
+  width: 185,
+  height: 185,
+  margin: '0 auto',
+  borderRadius: 18,
+  background: '#222222',
+  border: '1px solid rgba(255,255,255,0.15)',
+  boxShadow: '0 14px 40px rgba(0,0,0,0.38)',
+  position: 'relative',
+  overflow: 'hidden'
+} as const;
+
+const imagePreviewStyle = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'contain' as const,
+  display: 'block',
+  background: '#161616'
+} as const;
+
+const imageEmptyStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 40,
+  color: 'rgba(255,255,255,0.26)'
 } as const;
 
 const textPromptStyle = {
@@ -523,6 +759,27 @@ const toolbarStyle = {
   flexWrap: 'wrap'
 } as const;
 
+const imageTopToolbarStyle = {
+  position: 'absolute',
+  top: -42,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  zIndex: 10
+} as const;
+
+const uploadButtonStyle = {
+  minWidth: 98,
+  height: 46,
+  borderRadius: 999,
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(36,36,36,0.96)',
+  color: '#f5f5f5',
+  display: 'grid',
+  placeItems: 'center',
+  cursor: 'pointer',
+  boxShadow: '0 12px 30px rgba(0,0,0,0.35)'
+} as const;
+
 const toolbarColorDotStyle = {
   width: 24,
   height: 24,
@@ -550,6 +807,22 @@ const generatorPanelStyle = {
   bottom: -190,
   width: 800,
   minHeight: 170,
+  borderRadius: 26,
+  background: 'rgba(31,31,31,0.98)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  boxShadow: '0 18px 45px rgba(0,0,0,0.42)',
+  padding: 16,
+  display: 'grid',
+  gap: 12
+} as const;
+
+const imageBottomPanelStyle = {
+  position: 'absolute',
+  left: '50%',
+  bottom: -270,
+  width: 860,
+  transform: 'translateX(-50%)',
+  minHeight: 210,
   borderRadius: 26,
   background: 'rgba(31,31,31,0.98)',
   border: '1px solid rgba(255,255,255,0.08)',
@@ -589,6 +862,23 @@ const generatorActionsStyle = {
   display: 'flex',
   alignItems: 'center',
   gap: 10
+} as const;
+
+const imagePanelMetaStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12
+} as const;
+
+const quantitySelectStyle = {
+  minWidth: 62,
+  height: 40,
+  borderRadius: 999,
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#f5f5f5',
+  padding: '0 12px',
+  outline: 'none'
 } as const;
 
 const ghostChipStyle = {

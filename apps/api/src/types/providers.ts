@@ -8,5 +8,13 @@ export interface ModelRegistryItem {
   apiKeyEnv?: string;
   baseUrl?: string;
   modelName?: string;
+  imageSize?: string;
+  outputFormat?: string;
+  watermark?: boolean;
 }
 
+export interface ModelRegistryBundle {
+  textModels: ModelRegistryItem[];
+  imageModels: ModelRegistryItem[];
+  legacyModels: ModelRegistryItem[];
+}

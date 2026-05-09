@@ -4,7 +4,7 @@ export type NodeType =
   | 'image_upscale'
   | 'video_generate';
 
-export type TaskType = 'text_generate' | 'image_upscale' | 'video_generate';
+export type TaskType = 'text_generate' | 'image_generate' | 'image_upscale' | 'video_generate';
 
 export type NodeStatus = 'idle' | 'pending' | 'running' | 'success' | 'failed';
 

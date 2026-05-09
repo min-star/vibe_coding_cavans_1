@@ -1,0 +1,8 @@
+node_modules
+dist
+.DS_Store
+.env
+apps/api/data
+apps/api/src/public/uploads/*
+!apps/api/src/public/uploads/.gitkeep
+

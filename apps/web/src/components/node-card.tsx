@@ -616,9 +616,9 @@ function SidePlus({ side }: { side: 'left' | 'right' }) {
         width: 44,
         height: 44,
         borderRadius: 999,
-        border: '2px solid rgba(255,255,255,0.28)',
-        background: 'rgba(255,255,255,0.04)',
-        color: 'rgba(255,255,255,0.78)',
+        border: '2px solid rgba(192,192,192,0.38)',
+        background: 'rgba(192,192,192,0.08)',
+        color: '#c0c0c0',
         display: 'grid',
         placeItems: 'center',
         fontSize: 32,
@@ -851,11 +851,16 @@ const generatorFooterStyle = {
 } as const;
 
 const generatorSelectStyle = {
-  background: 'transparent',
-  border: 0,
+  minWidth: 120,
+  height: 40,
+  borderRadius: 12,
+  background: '#222222',
+  border: '1px solid rgba(255,255,255,0.08)',
   color: '#f5f5f5',
   fontSize: 15,
-  outline: 'none'
+  outline: 'none',
+  padding: '0 12px',
+  appearance: 'none' as const
 } as const;
 
 const generatorActionsStyle = {
@@ -875,10 +880,11 @@ const quantitySelectStyle = {
   height: 40,
   borderRadius: 999,
   border: '1px solid rgba(255,255,255,0.08)',
-  background: 'rgba(255,255,255,0.04)',
+  background: '#222222',
   color: '#f5f5f5',
   padding: '0 12px',
-  outline: 'none'
+  outline: 'none',
+  appearance: 'none' as const
 } as const;
 
 const ghostChipStyle = {

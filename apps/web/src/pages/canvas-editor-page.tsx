@@ -826,8 +826,8 @@ const sidePanelStyle: CSSProperties = {
 const flowSectionStyle: CSSProperties = {
   borderRadius: 20,
   overflow: 'hidden',
-  border: '1px solid #cbd5e1',
-  background: '#e2e8f0'
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: '#050505'
 };
 
 const flowOverlayStyle: CSSProperties = {

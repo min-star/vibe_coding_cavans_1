@@ -667,7 +667,7 @@ const textNodeWrapStyle = {
 
 const imageNodeWrapStyle = {
   position: 'relative',
-  width: 300,
+  width: 480,
   color: '#f5f5f5',
   pointerEvents: 'all'
 } as const;
@@ -685,9 +685,9 @@ const imageNodeHeaderStyle = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
-  margin: '0 0 12px 8px',
-  fontSize: 15,
-  color: 'rgba(255,255,255,0.84)'
+  margin: '0 0 14px 14px',
+  fontSize: 16,
+  color: 'rgba(255,255,255,0.88)'
 } as const;
 
 const textNodeBoxStyle = {
@@ -702,12 +702,12 @@ const textNodeBoxStyle = {
 } as const;
 
 const imageNodeBoxStyle = {
-  width: 185,
-  height: 185,
-  margin: '0 auto',
-  borderRadius: 18,
+  width: '100%',
+  height: 470,
+  borderRadius: 30,
   background: '#222222',
   border: '1px solid rgba(255,255,255,0.15)',
+  padding: 28,
   boxShadow: '0 14px 40px rgba(0,0,0,0.38)',
   position: 'relative',
   overflow: 'hidden'
@@ -726,7 +726,7 @@ const imageEmptyStyle = {
   height: '100%',
   display: 'grid',
   placeItems: 'center',
-  fontSize: 40,
+  fontSize: 72,
   color: 'rgba(255,255,255,0.26)'
 } as const;
 
@@ -819,10 +819,10 @@ const generatorPanelStyle = {
 const imageBottomPanelStyle = {
   position: 'absolute',
   left: '50%',
-  bottom: -270,
-  width: 860,
+  bottom: -230,
+  width: 800,
   transform: 'translateX(-50%)',
-  minHeight: 210,
+  minHeight: 170,
   borderRadius: 26,
   background: 'rgba(31,31,31,0.98)',
   border: '1px solid rgba(255,255,255,0.08)',

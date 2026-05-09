@@ -771,6 +771,8 @@ function EditorInner() {
           nodesConnectable
           elementsSelectable
           selectNodesOnDrag={false}
+          minZoom={0.1}
+          maxZoom={4}
           nodeTypes={{
             default: ({ id, data }) => (
               <NodeCard

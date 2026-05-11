@@ -8,7 +8,6 @@ import {
   Controls,
   Edge,
   type NodeMouseHandler,
-  MarkerType,
   Node,
   type ReactFlowInstance,
   ReactFlow,
@@ -20,6 +19,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useParams } from 'react-router-dom';
 import { apiRequest } from '../api/client';
+import { CanvasEdge as CanvasEdgeComponent } from '../components/canvas-edge';
 import { NodeCard } from '../components/node-card';
 import { useAuthGuard } from '../hooks/use-auth-guard';
 import type {
@@ -79,14 +79,11 @@ function toFlowEdge(edge: CanvasEdge): Edge {
     id: edge.id,
     source: edge.sourceNodeId,
     target: edge.targetNodeId,
-    label: edge.referenceType,
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      color: '#0f172a'
-    },
+    type: 'canvas-edge',
     style: {
-      stroke: '#0f172a',
-      strokeWidth: 2
+      stroke: '#c0c0c0',
+      strokeWidth: 2,
+      strokeLinecap: 'round'
     }
   };
 }
@@ -302,7 +299,7 @@ function EditorInner() {
       canvasId,
       sourceNodeId: edge.source,
       targetNodeId: edge.target,
-      referenceType: (typeof edge.label === 'string' ? edge.label : 'prompt') as CanvasEdge['referenceType'],
+      referenceType: 'input',
       createdAt: new Date().toISOString()
     }));
 
@@ -754,14 +751,11 @@ function EditorInner() {
                 {
                   ...params,
                   id: `${params.source}-${params.target}-${Date.now()}`,
-                  label: 'input',
-                  markerEnd: {
-                    type: MarkerType.ArrowClosed,
-                    color: '#0f172a'
-                  },
+                  type: 'canvas-edge',
                   style: {
-                    stroke: '#0f172a',
-                    strokeWidth: 2
+                    stroke: '#c0c0c0',
+                    strokeWidth: 2,
+                    strokeLinecap: 'round'
                   }
                 },
                 eds
@@ -773,6 +767,9 @@ function EditorInner() {
           selectNodesOnDrag={false}
           minZoom={0.1}
           maxZoom={4}
+          edgeTypes={{
+            'canvas-edge': CanvasEdgeComponent
+          }}
           nodeTypes={{
             default: ({ id, data }) => (
               <NodeCard

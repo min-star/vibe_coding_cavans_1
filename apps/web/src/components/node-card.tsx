@@ -15,6 +15,8 @@ type NodeCardProps = {
 
 const textSizeOptions = [18, 22, 26, 32];
 const colorOptions = ['#f5f5f5', '#facc15', '#93c5fd', '#fca5a5', '#86efac'];
+const nodePlusOffset = -54;
+const nodeHandleOffset = -28;
 const imageAspectOptions: Array<'1:1' | '4:3' | '3:4' | '16:9' | '9:16' | '3:2' | '2:3'> = [
   '1:1',
   '4:3',
@@ -51,6 +53,14 @@ function NodeCardImpl({
   const [isInlineEditing, setIsInlineEditing] = useState(false);
   const [fakeProgress, setFakeProgress] = useState(12);
   const displayText = outputText || String(node.data.prompt || '');
+
+  function handleHoverStart() {
+    setHovered(true);
+  }
+
+  function handleHoverEnd() {
+    setHovered(false);
+  }
 
   useEffect(() => {
     setInputPrompt(String(node.data.prompt || ''));
@@ -118,78 +128,81 @@ function NodeCardImpl({
 
   if (isText) {
     return (
-      <div
-        style={textNodeWrapStyle}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
+      <div style={textNodeWrapStyle}>
         <Handle type="target" position={Position.Left} style={textHandleStyle('left', hovered)} />
         <Handle type="source" position={Position.Right} style={textHandleStyle('right', hovered)} />
+        <HoverZone side="left" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
+        <HoverZone side="right" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
         {hovered ? <SidePlus side="left" /> : null}
         {hovered ? <SidePlus side="right" /> : null}
 
-        <div style={textNodeHeaderStyle} className="node-drag-handle">
-          <span style={{ opacity: 0.8 }}>≡</span>
-          <span>{node.data.label || 'Text'}</span>
-        </div>
-
         <div
-          className="node-drag-handle"
-          style={{
-            ...textNodeBoxStyle,
-            borderColor: selected ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'
-          }}
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
         >
-          {isInlineEditing ? (
-            <div
-              ref={editorRef}
-              className="nodrag nopan"
-              contentEditable
-              suppressContentEditableWarning
-              spellCheck={false}
-              style={{
-                ...textPromptStyle,
-                ...textStyle
-              }}
-              onFocus={() => setIsEditing(true)}
-              onInput={(event) => {
-                const nextPrompt = event.currentTarget.innerText;
-                setInputPrompt(nextPrompt);
-              }}
-              onBlur={(event) => {
-                const nextPrompt = event.currentTarget.innerText;
-                setInputPrompt(nextPrompt);
-                commitPrompt(nextPrompt);
-                setIsEditing(false);
-                setIsInlineEditing(false);
-              }}
-            >
-              {inputPrompt || '双击开始编辑...'}
-            </div>
-          ) : (
-            <div
-              className="nodrag nopan"
-              style={{
-                ...textPromptStyle,
-                ...textStyle
-              }}
-              onDoubleClick={() => {
-                setIsInlineEditing(true);
-                setInputPrompt(String(node.data.prompt || inputPrompt || ''));
-              }}
-            >
-              {displayText || '双击开始编辑...'}
-            </div>
-          )}
-          {node.status === 'pending' || node.status === 'running' ? (
-            <div style={loadingOverlayStyle} className="nodrag nopan">
-              <div style={loadingTitleStyle}>模型生成中...</div>
-              <div style={loadingBarTrackStyle}>
-                <div style={{ ...loadingBarFillStyle, width: `${fakeProgress}%` }} />
+          <div style={textNodeHeaderStyle} className="node-drag-handle">
+            <span style={{ opacity: 0.8 }}>≡</span>
+            <span>{node.data.label || 'Text'}</span>
+          </div>
+
+          <div
+            className="node-drag-handle"
+            style={{
+              ...textNodeBoxStyle,
+              borderColor: selected ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'
+            }}
+          >
+            {isInlineEditing ? (
+              <div
+                ref={editorRef}
+                className="nodrag nopan"
+                contentEditable
+                suppressContentEditableWarning
+                spellCheck={false}
+                style={{
+                  ...textPromptStyle,
+                  ...textStyle
+                }}
+                onFocus={() => setIsEditing(true)}
+                onInput={(event) => {
+                  const nextPrompt = event.currentTarget.innerText;
+                  setInputPrompt(nextPrompt);
+                }}
+                onBlur={(event) => {
+                  const nextPrompt = event.currentTarget.innerText;
+                  setInputPrompt(nextPrompt);
+                  commitPrompt(nextPrompt);
+                  setIsEditing(false);
+                  setIsInlineEditing(false);
+                }}
+              >
+                {inputPrompt || '双击开始编辑...'}
               </div>
-              <div style={loadingHintStyle}>{`${fakeProgress}%`}</div>
-            </div>
-          ) : null}
+            ) : (
+              <div
+                className="nodrag nopan"
+                style={{
+                  ...textPromptStyle,
+                  ...textStyle
+                }}
+                onDoubleClick={() => {
+                  setIsInlineEditing(true);
+                  setInputPrompt(String(node.data.prompt || inputPrompt || ''));
+                }}
+              >
+                {displayText || '双击开始编辑...'}
+              </div>
+            )}
+            {node.status === 'pending' || node.status === 'running' ? (
+              <div style={loadingOverlayStyle} className="nodrag nopan">
+                <div style={loadingTitleStyle}>模型生成中...</div>
+                <div style={loadingBarTrackStyle}>
+                  <div style={{ ...loadingBarFillStyle, width: `${fakeProgress}%` }} />
+                </div>
+                <div style={loadingHintStyle}>{`${fakeProgress}%`}</div>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {selected ? (
@@ -373,66 +386,69 @@ function NodeCardImpl({
 
   if (isImageNode) {
     return (
-      <div
-        style={imageNodeWrapStyle}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
+      <div style={imageNodeWrapStyle}>
         <Handle type="target" position={Position.Left} style={textHandleStyle('left', hovered)} />
         <Handle type="source" position={Position.Right} style={textHandleStyle('right', hovered)} />
+        <HoverZone side="left" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
+        <HoverZone side="right" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
         {hovered ? <SidePlus side="left" /> : null}
         {hovered ? <SidePlus side="right" /> : null}
 
-        <div style={imageNodeHeaderStyle} className="node-drag-handle">
-          <span style={{ opacity: 0.8 }}>◫</span>
-          <span>{node.data.label || 'Image'}</span>
-        </div>
-
-        {selected ? (
-          <div style={imageTopToolbarStyle} className="nodrag nopan">
-            <label style={uploadButtonStyle} className="nodrag nopan">
-              <span>⇧ 上传</span>
-              <input
-                type="file"
-                accept="image/*"
-                style={{ display: 'none' }}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) {
-                    onImageUpload?.(node, file);
-                    event.target.value = '';
-                  }
-                }}
-              />
-            </label>
-          </div>
-        ) : null}
-
         <div
-          className="node-drag-handle"
-          style={{
-            ...imageNodeBoxStyle,
-            borderColor: selected ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'
-          }}
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
         >
-          {typeof outputImage === 'string' ? (
-            <img
-              src={outputImage}
-              alt="node image"
-              style={imagePreviewStyle}
-            />
-          ) : (
-            <div style={imageEmptyStyle}>🖼</div>
-          )}
-          {node.status === 'pending' || node.status === 'running' ? (
-            <div style={loadingOverlayStyle} className="nodrag nopan">
-              <div style={loadingTitleStyle}>图像生成中...</div>
-              <div style={loadingBarTrackStyle}>
-                <div style={{ ...loadingBarFillStyle, width: `${fakeProgress}%` }} />
-              </div>
-              <div style={loadingHintStyle}>{`${fakeProgress}%`}</div>
+          <div style={imageNodeHeaderStyle} className="node-drag-handle">
+            <span style={{ opacity: 0.8 }}>◫</span>
+            <span>{node.data.label || 'Image'}</span>
+          </div>
+
+          {selected ? (
+            <div style={imageTopToolbarStyle} className="nodrag nopan">
+              <label style={uploadButtonStyle} className="nodrag nopan">
+                <span>⇧ 上传</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      onImageUpload?.(node, file);
+                      event.target.value = '';
+                    }
+                  }}
+                />
+              </label>
             </div>
           ) : null}
+
+          <div
+            className="node-drag-handle"
+            style={{
+              ...imageNodeBoxStyle,
+              borderColor: selected ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'
+            }}
+          >
+            {typeof outputImage === 'string' ? (
+              <img
+                src={outputImage}
+                alt="node image"
+                style={imagePreviewStyle}
+              />
+            ) : (
+              <div style={imageEmptyStyle}>🖼</div>
+            )}
+            {node.status === 'pending' || node.status === 'running' ? (
+              <div style={loadingOverlayStyle} className="nodrag nopan">
+                <div style={loadingTitleStyle}>图像生成中...</div>
+                <div style={loadingBarTrackStyle}>
+                  <div style={{ ...loadingBarFillStyle, width: `${fakeProgress}%` }} />
+                </div>
+                <div style={loadingHintStyle}>{`${fakeProgress}%`}</div>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {selected ? (
@@ -605,13 +621,41 @@ function NodeCardImpl({
 
 export const NodeCard = memo(NodeCardImpl);
 
+function HoverZone({
+  side,
+  onEnter,
+  onLeave
+}: {
+  side: 'left' | 'right';
+  onEnter: () => void;
+  onLeave: () => void;
+}) {
+  return (
+    <div
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      style={{
+        position: 'absolute',
+        top: '50%',
+        [side]: nodePlusOffset,
+        transform: 'translateY(-50%)',
+        width: 72,
+        height: 72,
+        borderRadius: 999,
+        background: 'transparent',
+        zIndex: 4
+      }}
+    />
+  );
+}
+
 function SidePlus({ side }: { side: 'left' | 'right' }) {
   return (
     <div
       style={{
         position: 'absolute',
         top: '50%',
-        [side]: -66,
+        [side]: nodePlusOffset,
         transform: 'translateY(-50%)',
         width: 44,
         height: 44,
@@ -624,7 +668,8 @@ function SidePlus({ side }: { side: 'left' | 'right' }) {
         fontSize: 32,
         lineHeight: 1,
         boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-        pointerEvents: 'none'
+        pointerEvents: 'none',
+        zIndex: 8
       }}
     >
       +
@@ -648,9 +693,9 @@ function textHandleStyle(side: 'left' | 'right', visible: boolean) {
     width: 44,
     height: 44,
     borderRadius: 999,
-    border: '2px solid transparent',
-    background: 'transparent',
-    [side]: -66,
+      border: '2px solid transparent',
+      background: 'transparent',
+    [side]: nodeHandleOffset,
     top: '50%',
     transform: 'translateY(-50%)',
     opacity: visible ? 1 : 0,
@@ -662,14 +707,16 @@ const textNodeWrapStyle = {
   position: 'relative',
   width: 480,
   color: '#f5f5f5',
-  pointerEvents: 'all'
+  pointerEvents: 'all',
+  overflow: 'visible'
 } as const;
 
 const imageNodeWrapStyle = {
   position: 'relative',
   width: 480,
   color: '#f5f5f5',
-  pointerEvents: 'all'
+  pointerEvents: 'all',
+  overflow: 'visible'
 } as const;
 
 const textNodeHeaderStyle = {
@@ -691,6 +738,7 @@ const imageNodeHeaderStyle = {
 } as const;
 
 const textNodeBoxStyle = {
+  width: '100%',
   height: 470,
   borderRadius: 30,
   background: '#222222',
@@ -698,7 +746,8 @@ const textNodeBoxStyle = {
   padding: 28,
   boxShadow: '0 14px 40px rgba(0,0,0,0.38)',
   position: 'relative',
-  overflow: 'hidden'
+  overflow: 'hidden',
+  boxSizing: 'border-box'
 } as const;
 
 const imageNodeBoxStyle = {
@@ -710,7 +759,8 @@ const imageNodeBoxStyle = {
   padding: 28,
   boxShadow: '0 14px 40px rgba(0,0,0,0.38)',
   position: 'relative',
-  overflow: 'hidden'
+  overflow: 'hidden',
+  boxSizing: 'border-box'
 } as const;
 
 const imagePreviewStyle = {

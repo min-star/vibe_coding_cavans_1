@@ -15,8 +15,11 @@ type NodeCardProps = {
 
 const textSizeOptions = [18, 22, 26, 32];
 const colorOptions = ['#f5f5f5', '#facc15', '#93c5fd', '#fca5a5', '#86efac'];
+const nodePlusSize = 44;
+const nodeHoverZoneSize = 108;
 const nodePlusOffset = -54;
-const nodeHandleOffset = -28;
+const nodeHandleSize = 60;
+const nodeHandleOffset = -62;
 const imageAspectOptions: Array<'1:1' | '4:3' | '3:4' | '16:9' | '9:16' | '3:2' | '2:3'> = [
   '1:1',
   '4:3',
@@ -129,12 +132,24 @@ function NodeCardImpl({
   if (isText) {
     return (
       <div style={textNodeWrapStyle}>
-        <Handle type="target" position={Position.Left} style={textHandleStyle('left', hovered)} />
-        <Handle type="source" position={Position.Right} style={textHandleStyle('right', hovered)} />
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={textHandleStyle('left', hovered)}
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={textHandleStyle('right', hovered)}
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
+        />
         <HoverZone side="left" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
         <HoverZone side="right" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
-        {hovered ? <SidePlus side="left" /> : null}
-        {hovered ? <SidePlus side="right" /> : null}
+        {hovered ? <SidePlus side="left" onEnter={handleHoverStart} onLeave={handleHoverEnd} /> : null}
+        {hovered ? <SidePlus side="right" onEnter={handleHoverStart} onLeave={handleHoverEnd} /> : null}
 
         <div
           onMouseEnter={handleHoverStart}
@@ -387,12 +402,24 @@ function NodeCardImpl({
   if (isImageNode) {
     return (
       <div style={imageNodeWrapStyle}>
-        <Handle type="target" position={Position.Left} style={textHandleStyle('left', hovered)} />
-        <Handle type="source" position={Position.Right} style={textHandleStyle('right', hovered)} />
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={textHandleStyle('left', hovered)}
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={textHandleStyle('right', hovered)}
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
+        />
         <HoverZone side="left" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
         <HoverZone side="right" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
-        {hovered ? <SidePlus side="left" /> : null}
-        {hovered ? <SidePlus side="right" /> : null}
+        {hovered ? <SidePlus side="left" onEnter={handleHoverStart} onLeave={handleHoverEnd} /> : null}
+        {hovered ? <SidePlus side="right" onEnter={handleHoverStart} onLeave={handleHoverEnd} /> : null}
 
         <div
           onMouseEnter={handleHoverStart}
@@ -630,6 +657,36 @@ function HoverZone({
   onEnter: () => void;
   onLeave: () => void;
 }) {
+  const hoverZoneOffset = nodePlusOffset - (nodeHoverZoneSize - nodePlusSize) / 2;
+
+  return (
+    <div
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      style={{
+        position: 'absolute',
+        top: '50%',
+        [side]: hoverZoneOffset,
+        transform: 'translateY(-50%)',
+        width: nodeHoverZoneSize,
+        height: nodeHoverZoneSize,
+        borderRadius: 999,
+        background: 'transparent',
+        zIndex: 4
+      }}
+    />
+  );
+}
+
+function SidePlus({
+  side,
+  onEnter,
+  onLeave
+}: {
+  side: 'left' | 'right';
+  onEnter: () => void;
+  onLeave: () => void;
+}) {
   return (
     <div
       onMouseEnter={onEnter}
@@ -639,26 +696,8 @@ function HoverZone({
         top: '50%',
         [side]: nodePlusOffset,
         transform: 'translateY(-50%)',
-        width: 72,
-        height: 72,
-        borderRadius: 999,
-        background: 'transparent',
-        zIndex: 4
-      }}
-    />
-  );
-}
-
-function SidePlus({ side }: { side: 'left' | 'right' }) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        top: '50%',
-        [side]: nodePlusOffset,
-        transform: 'translateY(-50%)',
-        width: 44,
-        height: 44,
+        width: nodePlusSize,
+        height: nodePlusSize,
         borderRadius: 999,
         border: '2px solid rgba(192,192,192,0.38)',
         background: 'rgba(192,192,192,0.08)',
@@ -690,15 +729,16 @@ function defaultHandleStyle(side: 'left' | 'right') {
 
 function textHandleStyle(side: 'left' | 'right', visible: boolean) {
   return {
-    width: 44,
-    height: 44,
+    width: nodeHandleSize,
+    height: nodeHandleSize,
     borderRadius: 999,
-      border: '2px solid transparent',
-      background: 'transparent',
+    border: '2px solid transparent',
+    background: 'transparent',
     [side]: nodeHandleOffset,
     top: '50%',
     transform: 'translateY(-50%)',
     opacity: visible ? 1 : 0,
+    pointerEvents: visible ? 'auto' : 'none',
     zIndex: 5
   } as const;
 }

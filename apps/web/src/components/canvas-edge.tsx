@@ -1,11 +1,17 @@
-import { BaseEdge, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
+import { BaseEdge, Position, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
 
-function clampInset(delta: number) {
-  if (Math.abs(delta) < 20) {
-    return 0;
+const handleCenterToNodeEdge = 60;
+
+function alignXToNodeEdge(x: number, position: Position | undefined) {
+  if (position === Position.Left) {
+    return x + handleCenterToNodeEdge;
   }
 
-  return delta > 0 ? 12 : -12;
+  if (position === Position.Right) {
+    return x - handleCenterToNodeEdge;
+  }
+
+  return x;
 }
 
 export function CanvasEdge({
@@ -18,8 +24,8 @@ export function CanvasEdge({
   targetPosition,
   style
 }: EdgeProps) {
-  const adjustedSourceX = sourceX - clampInset(targetX - sourceX);
-  const adjustedTargetX = targetX + clampInset(targetX - sourceX);
+  const adjustedSourceX = alignXToNodeEdge(sourceX, sourcePosition);
+  const adjustedTargetX = alignXToNodeEdge(targetX, targetPosition);
 
   const [path] = getSmoothStepPath({
     sourceX: adjustedSourceX,

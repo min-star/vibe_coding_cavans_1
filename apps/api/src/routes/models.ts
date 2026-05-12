@@ -8,6 +8,7 @@ modelRouter.get('/', (_, res) => {
   res.json({
     models: getAllModels(),
     textModels: bundle.textModels,
-    imageModels: bundle.imageModels
+    imageModels: bundle.imageModels,
+    videoModels: bundle.videoModels
   });
 });

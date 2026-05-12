@@ -12,6 +12,7 @@ export const env = {
   modelRegistryJson: process.env.MODEL_REGISTRY_JSON || '',
   textModelRegistryJson: process.env.TEXT_MODEL_REGISTRY_JSON || '',
   imageModelRegistryJson: process.env.IMAGE_MODEL_REGISTRY_JSON || '',
+  videoModelRegistryJson: process.env.VIDEO_MODEL_REGISTRY_JSON || '',
   openAiApiKey: process.env.OPENAI_API_KEY || '',
   openAiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'
 };

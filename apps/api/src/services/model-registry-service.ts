@@ -19,6 +19,15 @@ const fallbackImageModels: ModelRegistryItem[] = [
   }
 ];
 
+const fallbackVideoModels: ModelRegistryItem[] = [
+  {
+    id: 'mock-video',
+    label: 'Mock Video Model',
+    provider: 'mock',
+    taskTypes: ['video_generate']
+  }
+];
+
 function safeParseRegistry(raw: string) {
   if (!raw) {
     return [];
@@ -49,10 +58,15 @@ function filterByTask(models: ModelRegistryItem[], taskType: 'text_generate' | '
   return models.filter((model) => model.taskTypes.includes(taskType));
 }
 
+function filterVideoModels(models: ModelRegistryItem[]) {
+  return models.filter((model) => model.taskTypes.includes('video_generate'));
+}
+
 export function getModelRegistryBundle(): ModelRegistryBundle {
   const legacyModels = safeParseRegistry(env.modelRegistryJson);
   const explicitTextModels = safeParseRegistry(env.textModelRegistryJson);
   const explicitImageModels = safeParseRegistry(env.imageModelRegistryJson);
+  const explicitVideoModels = safeParseRegistry(env.videoModelRegistryJson);
 
   const textModels = dedupeModels([
     ...explicitTextModels,
@@ -67,16 +81,23 @@ export function getModelRegistryBundle(): ModelRegistryBundle {
     ...fallbackImageModels
   ]);
 
+  const videoModels = dedupeModels([
+    ...explicitVideoModels,
+    ...filterVideoModels(legacyModels),
+    ...fallbackVideoModels
+  ]);
+
   return {
     textModels,
     imageModels,
+    videoModels,
     legacyModels
   };
 }
 
 export function getAllModels() {
   const bundle = getModelRegistryBundle();
-  return dedupeModels([...bundle.textModels, ...bundle.imageModels]);
+  return dedupeModels([...bundle.textModels, ...bundle.imageModels, ...bundle.videoModels]);
 }
 
 export function findModelById(modelId: string | undefined) {
@@ -84,5 +105,16 @@ export function findModelById(modelId: string | undefined) {
     return undefined;
   }
 
-  return getAllModels().find((item) => item.id === modelId);
+  const allModels = getAllModels();
+  const exactMatch = allModels.find((item) => item.id === modelId);
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const normalizedModelId = modelId.toLowerCase();
+  return allModels.find((item) => {
+    const normalizedId = item.id.toLowerCase();
+    const normalizedName = item.modelName?.toLowerCase();
+    return normalizedId === normalizedModelId || normalizedName === normalizedModelId;
+  });
 }

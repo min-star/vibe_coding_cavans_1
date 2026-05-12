@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { nanoid } from 'nanoid';
 import { env } from '../config/env.js';
 import { readDb, writeDb } from '../data/store.js';
-import { generateImageWithModel, generateTextWithModel } from './llm-service.js';
+import { generateImageWithModel, generateTextWithModel, generateVideoWithModel } from './llm-service.js';
 import { findModelById } from './model-registry-service.js';
 import type { Asset, CanvasEdge, CanvasNode, Task, TaskType } from '../types/models.js';
 import { nowIso } from '../utils/time.js';
@@ -93,6 +93,32 @@ async function saveRemoteImageToUploads(imageUrl: string) {
   };
 }
 
+async function saveRemoteFileToUploads(fileUrl: string, fallbackExt = 'mp4') {
+  ensureUploadDir();
+
+  const response = await fetch(fileUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download generated file: ${response.status}`);
+  }
+
+  const mimeType = response.headers.get('content-type') || '';
+  const ext = mimeType.includes('webm')
+    ? 'webm'
+    : mimeType.includes('ogg')
+      ? 'ogg'
+      : mimeType.includes('mp4')
+        ? 'mp4'
+        : fallbackExt;
+  const filename = `${crypto.randomUUID()}.${ext}`;
+  const filepath = path.join(uploadDir, filename);
+  const arrayBuffer = await response.arrayBuffer();
+  fs.writeFileSync(filepath, Buffer.from(arrayBuffer));
+
+  return {
+    fileUrl: `${env.appBaseUrl}/uploads/${filename}`
+  };
+}
+
 function escapeXml(text: string) {
   return text
     .replaceAll('&', '&amp;')
@@ -143,6 +169,14 @@ function getFirstImageSource(nodes: CanvasNode[]) {
   });
 }
 
+function getVideoSourceNodes(nodes: CanvasNode[]) {
+  return nodes.filter((node) => {
+    const fileUrl = String(node.output?.fileUrl || '');
+    const mimeType = String((node.output?.metadata as Record<string, unknown> | undefined)?.mimeType || '');
+    return fileUrl.endsWith('.mp4') || fileUrl.endsWith('.webm') || mimeType.startsWith('video/');
+  });
+}
+
 function scheduleTaskExecution(taskId: string) {
   setTimeout(() => {
     const db = readDb();
@@ -179,6 +213,7 @@ function scheduleTaskExecution(taskId: string) {
       const quantity = Number(task.input.quantity || 1);
       const sourceNodes = getIncomingSourceNodes(db, task.canvasId, task.nodeId);
       const sourceImageNode = getFirstImageSource(sourceNodes);
+      const sourceVideoNodes = getVideoSourceNodes(sourceNodes);
       const sourceImageUrl = String(
         sourceImageNode?.output?.fileUrl ||
           sourceImageNode?.output?.thumbnailUrl ||
@@ -187,6 +222,7 @@ function scheduleTaskExecution(taskId: string) {
           node.data.previewUrl ||
           ''
       );
+      const sourceVideoUrl = String(sourceVideoNodes[0]?.output?.fileUrl || '');
 
       if (task.taskType === 'text_generate') {
         const text = await generateTextWithModel({
@@ -289,31 +325,67 @@ function scheduleTaskExecution(taskId: string) {
       }
 
       if (task.taskType === 'video_generate') {
-        const poster = writeSvgFile(`${task.id}-poster.svg`, prompt || 'Video Generation', [
-          `Prompt: ${prompt || 'No prompt'}`,
-          `Source: ${sourceImageUrl || 'No linked image source'}`,
-          `Refs: ${references.join(' | ') || 'No references'}`
-        ]);
-        const manifest = writeJsonFile(`${task.id}.json`, {
-          type: 'mock-video',
+        const aspectRatio = String(task.input.aspectRatio || '16:9');
+        const resolution = String(task.input.resolution || '1080p');
+        const generationMode = String(task.input.generationMode || '文生视频');
+        const audioEnabled = Boolean(task.input.audioEnabled ?? true);
+        const generated = await generateVideoWithModel({
+          model: findModelById(modelId),
           prompt,
           references,
-          sourceImageUrl,
-          duration: task.input.duration || 5,
-          note: 'Replace this manifest with a real MP4/WebM provider in production.'
+          duration: Number(task.input.duration || 5),
+          aspectRatio,
+          resolution,
+          generationMode,
+          audioEnabled,
+          inputVideoUrl: sourceVideoUrl || undefined,
+          inputImageUrls: sourceImageUrl ? [sourceImageUrl] : []
         });
+
+        const storedVideo = generated.videoUrl
+          ? await saveRemoteFileToUploads(generated.videoUrl, 'mp4')
+          : writeJsonFile(`${task.id}.json`, {
+              type: 'mock-video',
+              prompt,
+              references,
+              sourceImageUrl,
+              sourceVideoUrl,
+              duration: task.input.duration || 5,
+              resolution,
+              aspectRatio,
+              generationMode,
+              audioEnabled,
+              note: 'Replace this manifest with a real MP4/WebM provider in production.'
+            });
+
+        const storedPoster = generated.posterUrl
+          ? await saveRemoteImageToUploads(generated.posterUrl)
+          : writeSvgFile(`${task.id}-poster.svg`, prompt || 'Video Generation', [
+              `Prompt: ${prompt || 'No prompt'}`,
+              `Source: ${sourceVideoUrl || sourceImageUrl || 'No linked source'}`,
+              `Ratio: ${aspectRatio}`,
+              `Resolution: ${resolution}`,
+              `Mode: ${generationMode}`
+            ]);
+        const storedPosterUrl =
+          'thumbnailUrl' in storedPoster ? storedPoster.thumbnailUrl || storedPoster.fileUrl : storedPoster.fileUrl;
+
         const asset = createAssetRecord(db, {
           ownerId: task.userId,
           type: 'video',
           title: `Generated Video ${task.id.slice(0, 6)}`,
-          fileUrl: manifest.fileUrl,
-          thumbnailUrl: poster.fileUrl,
+          fileUrl: storedVideo.fileUrl,
+          thumbnailUrl: storedPosterUrl,
           metadata: {
             taskType: task.taskType,
             prompt,
             duration: task.input.duration || 5,
             references,
-            sourceImageUrl
+            sourceImageUrl,
+            sourceVideoUrl,
+            aspectRatio,
+            resolution,
+            ...(generated.metadata || {})
           },
           sourceTaskId: task.id
         });
@@ -323,6 +395,7 @@ function scheduleTaskExecution(taskId: string) {
         node.output = {
           ...asset,
           inputImageUrl: sourceImageUrl || undefined,
+          sourceVideoUrl: sourceVideoUrl || undefined,
           sourceNodeIds: sourceNodes.map((item) => item.id)
         };
       }

@@ -11,10 +11,12 @@ export interface ModelRegistryItem {
   imageSize?: string;
   outputFormat?: string;
   watermark?: boolean;
+  videoEndpoint?: string;
 }
 
 export interface ModelRegistryBundle {
   textModels: ModelRegistryItem[];
   imageModels: ModelRegistryItem[];
+  videoModels: ModelRegistryItem[];
   legacyModels: ModelRegistryItem[];
 }

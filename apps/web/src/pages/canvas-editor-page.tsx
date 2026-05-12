@@ -34,6 +34,9 @@ import type {
 } from '../types';
 
 const IMAGE_ASPECT_RATIO_DEFAULT: CanvasNode['data']['aspectRatio'] = '1:1';
+const VIDEO_ASPECT_RATIO_DEFAULT: CanvasNode['data']['aspectRatio'] = '16:9';
+const VIDEO_RESOLUTION_DEFAULT: NonNullable<CanvasNode['data']['resolution']> = '1080p';
+const VIDEO_GENERATION_MODE_DEFAULT: NonNullable<CanvasNode['data']['generationMode']> = '文生视频';
 
 type FlowNodeData = {
   node: CanvasNode;
@@ -105,6 +108,7 @@ function EditorInner() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [textModelOptions, setTextModelOptions] = useState<ModelOption[]>([]);
   const [imageModelOptions, setImageModelOptions] = useState<ModelOption[]>([]);
+  const [videoModelOptions, setVideoModelOptions] = useState<ModelOption[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance<Node<FlowNodeData>, Edge> | null>(null);
   const flowOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -246,6 +250,7 @@ function EditorInner() {
     const data = await apiRequest<ModelRegistryResponse>('/models');
     setTextModelOptions(data.textModels);
     setImageModelOptions(data.imageModels);
+    setVideoModelOptions(data.videoModels);
   }
 
   async function addNode(type: NodeType, customPosition?: { x: number; y: number }) {
@@ -280,6 +285,21 @@ function EditorInner() {
                 model: imageModelOptions[0]?.id || 'mock-image',
                 quantity: 1,
                 aspectRatio: IMAGE_ASPECT_RATIO_DEFAULT
+              }
+            }
+        : type === 'video_generate'
+          ? {
+              ...data.node,
+              data: {
+                ...data.node.data,
+                label: 'Video',
+                model: videoModelOptions[0]?.id || 'mock-video',
+                quantity: 1,
+                aspectRatio: VIDEO_ASPECT_RATIO_DEFAULT,
+                resolution: VIDEO_RESOLUTION_DEFAULT,
+                duration: 5,
+                generationMode: VIDEO_GENERATION_MODE_DEFAULT,
+                audioEnabled: true
               }
             }
         : data.node;
@@ -375,11 +395,19 @@ function EditorInner() {
       duration: Number(node.data.duration || 5),
       model: String(
         node.data.model ||
-          (node.type === 'text' ? textModelOptions[0]?.id : imageModelOptions[0]?.id) ||
-          (node.type === 'text' ? 'mock-text' : 'mock-image')
+          (node.type === 'text'
+            ? textModelOptions[0]?.id
+            : node.type === 'video_generate'
+              ? videoModelOptions[0]?.id
+              : imageModelOptions[0]?.id) ||
+          (node.type === 'text' ? 'mock-text' : node.type === 'video_generate' ? 'mock-video' : 'mock-image')
       ),
       quantity: Number(node.data.quantity || 1),
-      aspectRatio: String(node.data.aspectRatio || IMAGE_ASPECT_RATIO_DEFAULT)
+      aspectRatio: String(node.data.aspectRatio || IMAGE_ASPECT_RATIO_DEFAULT),
+      resolution: String(node.data.resolution || VIDEO_RESOLUTION_DEFAULT),
+      generationMode: String(node.data.generationMode || VIDEO_GENERATION_MODE_DEFAULT),
+      audioEnabled: Boolean(node.data.audioEnabled ?? true),
+      inputAssetId: node.data.assetId ? String(node.data.assetId) : undefined
     };
 
     try {
@@ -489,6 +517,33 @@ function EditorInner() {
   }
 
   async function handleImageUpload(node: CanvasNode, file: File) {
+    if (!token) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    const data = await apiRequest<{ asset: Asset }>('/assets/upload', {
+      method: 'POST',
+      token,
+      formData
+    });
+
+    updateNodeLocal({
+      ...node,
+      status: 'success',
+      data: {
+        ...node.data,
+        assetId: data.asset.id,
+        previewUrl: data.asset.thumbnailUrl || data.asset.fileUrl
+      },
+      output: {
+        ...data.asset
+      }
+    });
+  }
+
+  async function handleVideoUpload(node: CanvasNode, file: File) {
     if (!token) {
       return;
     }
@@ -781,7 +836,14 @@ function EditorInner() {
                 onDelete={(node) => void deleteNodeById(node.id)}
                 onVoiceInput={handleVoiceInput}
                 onImageUpload={(node, file) => void handleImageUpload(node, file)}
-                modelOptions={data.node.type === 'text' ? textModelOptions : imageModelOptions}
+                onVideoUpload={(node, file) => void handleVideoUpload(node, file)}
+                modelOptions={
+                  data.node.type === 'text'
+                    ? textModelOptions
+                    : data.node.type === 'video_generate'
+                      ? videoModelOptions
+                      : imageModelOptions
+                }
               />
             )
           }}

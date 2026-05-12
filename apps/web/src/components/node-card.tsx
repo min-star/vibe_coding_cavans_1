@@ -10,6 +10,7 @@ type NodeCardProps = {
   onDelete?: (node: CanvasNode) => void;
   onVoiceInput?: (node: CanvasNode) => void;
   onImageUpload?: (node: CanvasNode, file: File) => void;
+  onVideoUpload?: (node: CanvasNode, file: File) => void;
   modelOptions?: ModelOption[];
 };
 
@@ -30,6 +31,10 @@ const imageAspectOptions: Array<'1:1' | '4:3' | '3:4' | '16:9' | '9:16' | '3:2' 
   '2:3'
 ];
 const imageQuantityOptions = [1, 2, 3, 4, 5, 6];
+const videoAspectOptions: Array<'16:9' | '4:3' | '1:1' | '3:4' | '9:16' | '21:9'> = ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'];
+const videoResolutionOptions: Array<'480p' | '720p' | '1080p'> = ['480p', '720p', '1080p'];
+const videoDurationOptions = [5, 10];
+const videoGenerationModes: Array<'文生视频' | '首帧' | '首尾帧'> = ['文生视频', '首帧', '首尾帧'];
 
 function NodeCardImpl({
   node,
@@ -39,6 +44,7 @@ function NodeCardImpl({
   onDelete,
   onVoiceInput,
   onImageUpload,
+  onVideoUpload,
   modelOptions = []
 }: NodeCardProps) {
   const outputText = node.output?.text ? String(node.output.text) : undefined;
@@ -48,12 +54,20 @@ function NodeCardImpl({
   const isText = node.type === 'text';
   const isImageUpload = node.type === 'image_upload';
   const isImageUpscale = node.type === 'image_upscale';
+  const isVideo = node.type === 'video_generate';
   const isImageNode = isImageUpload || isImageUpscale;
+  const outputVideo =
+    node.output?.fileUrl && String(node.output.fileUrl).match(/\.(mp4|webm|ogg)$/i)
+      ? String(node.output.fileUrl)
+      : node.data.previewUrl && String(node.data.previewUrl).match(/\.(mp4|webm|ogg)$/i)
+        ? String(node.data.previewUrl)
+        : undefined;
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [inputPrompt, setInputPrompt] = useState(String(node.data.prompt || ''));
   const [hovered, setHovered] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isInlineEditing, setIsInlineEditing] = useState(false);
+  const [videoSettingsOpen, setVideoSettingsOpen] = useState(false);
   const [fakeProgress, setFakeProgress] = useState(12);
   const displayText = outputText || String(node.data.prompt || '');
 
@@ -127,7 +141,15 @@ function NodeCardImpl({
       ? modelOptions
       : isText
         ? [{ id: 'mock-text', label: 'Mock Text Model', provider: 'mock', taskTypes: ['text_generate'] }]
+        : isVideo
+          ? [{ id: 'mock-video', label: 'Mock Video Model', provider: 'mock', taskTypes: ['video_generate'] }]
         : [{ id: 'mock-image', label: 'Mock Image Model', provider: 'mock', taskTypes: ['image_generate'] }];
+
+  useEffect(() => {
+    if (!selected) {
+      setVideoSettingsOpen(false);
+    }
+  }, [selected]);
 
   if (isText) {
     return (
@@ -588,6 +610,352 @@ function NodeCardImpl({
     );
   }
 
+  if (isVideo) {
+    return (
+      <div style={videoNodeWrapStyle}>
+        <Handle
+          type="target"
+          position={Position.Left}
+          style={textHandleStyle('left', hovered)}
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
+        />
+        <Handle
+          type="source"
+          position={Position.Right}
+          style={textHandleStyle('right', hovered)}
+          onMouseEnter={handleHoverStart}
+          onMouseLeave={handleHoverEnd}
+        />
+        <HoverZone side="left" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
+        <HoverZone side="right" onEnter={handleHoverStart} onLeave={handleHoverEnd} />
+        {hovered ? <SidePlus side="left" onEnter={handleHoverStart} onLeave={handleHoverEnd} /> : null}
+        {hovered ? <SidePlus side="right" onEnter={handleHoverStart} onLeave={handleHoverEnd} /> : null}
+
+        <div onMouseEnter={handleHoverStart} onMouseLeave={handleHoverEnd}>
+          <div style={imageNodeHeaderStyle} className="node-drag-handle">
+            <span style={{ opacity: 0.8 }}>▣</span>
+            <span>{node.data.label || 'Video'}</span>
+          </div>
+
+          {selected ? (
+            <div style={videoTopToolbarStyle} className="nodrag nopan">
+              <label style={uploadButtonStyle} className="nodrag nopan">
+                <span>⇧ 上传</span>
+                <input
+                  type="file"
+                  accept="video/*"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      onVideoUpload?.(node, file);
+                      event.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          <div
+            className="node-drag-handle"
+            style={{
+              ...videoNodeBoxStyle,
+              borderColor: selected ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.12)'
+            }}
+          >
+            {outputVideo ? (
+              <video src={outputVideo} controls style={videoPreviewStyle} />
+            ) : (
+              <div style={videoEmptyStyle}>
+                <div style={videoPlayIconStyle}>▶</div>
+              </div>
+            )}
+            {node.status === 'pending' || node.status === 'running' ? (
+              <div style={loadingOverlayStyle} className="nodrag nopan">
+                <div style={loadingTitleStyle}>视频生成中...</div>
+                <div style={loadingBarTrackStyle}>
+                  <div style={{ ...loadingBarFillStyle, width: `${fakeProgress}%` }} />
+                </div>
+                <div style={loadingHintStyle}>{`${fakeProgress}%`}</div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {selected ? (
+          <>
+            {videoSettingsOpen ? (
+              <div style={videoSettingsPopoverStyle} className="nodrag nopan">
+                <div style={videoSettingsBlockStyle}>
+                  <div style={videoSettingsLabelStyle}>生成方式</div>
+                  <div style={segmentedWrapStyle}>
+                    {videoGenerationModes.map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        className="nodrag nopan"
+                        style={segmentedButtonStyle(String(node.data.generationMode || '文生视频') === mode)}
+                        onClick={() =>
+                          onChange?.({
+                            ...node,
+                            data: {
+                              ...node.data,
+                              generationMode: mode
+                            }
+                          })
+                        }
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={videoSettingsBlockStyle}>
+                  <div style={videoSettingsLabelStyle}>比例</div>
+                  <div style={videoRatioGridStyle}>
+                    {videoAspectOptions.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className="nodrag nopan"
+                        style={videoRatioButtonStyle(String(node.data.aspectRatio || '16:9') === option)}
+                        onClick={() =>
+                          onChange?.({
+                            ...node,
+                            data: {
+                              ...node.data,
+                              aspectRatio: option
+                            }
+                          })
+                        }
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={videoSettingsBlockStyle}>
+                  <div style={videoSettingsLabelStyle}>清晰度</div>
+                  <div style={segmentedWrapStyle}>
+                    {videoResolutionOptions.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className="nodrag nopan"
+                        style={segmentedButtonStyle(String(node.data.resolution || '1080p') === option)}
+                        onClick={() =>
+                          onChange?.({
+                            ...node,
+                            data: {
+                              ...node.data,
+                              resolution: option
+                            }
+                          })
+                        }
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={videoSettingsBlockStyle}>
+                  <div style={videoSettingsLabelStyle}>生成时长</div>
+                  <div style={segmentedWrapStyle}>
+                    {videoDurationOptions.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className="nodrag nopan"
+                        style={segmentedButtonStyle(Number(node.data.duration || 5) === option)}
+                        onClick={() =>
+                          onChange?.({
+                            ...node,
+                            data: {
+                              ...node.data,
+                              duration: option
+                            }
+                          })
+                        }
+                      >
+                        {`${option}s`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={videoSettingsBlockStyle}>
+                  <div style={videoSettingsLabelStyle}>生成音频</div>
+                  <div style={segmentedWrapStyle}>
+                    {[true, false].map((option) => (
+                      <button
+                        key={String(option)}
+                        type="button"
+                        className="nodrag nopan"
+                        style={segmentedButtonStyle(Boolean(node.data.audioEnabled ?? true) === option)}
+                        onClick={() =>
+                          onChange?.({
+                            ...node,
+                            data: {
+                              ...node.data,
+                              audioEnabled: option
+                            }
+                          })
+                        }
+                      >
+                        {option ? '开启' : '关闭'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div style={videoBottomPanelStyle} className="nodrag nopan">
+              <div style={videoBottomTopRowStyle}>
+                <button className="nodrag nopan" type="button" style={ghostSquareChipStyle}>
+                  ⌖
+                </button>
+                <button
+                  className="nodrag nopan"
+                  type="button"
+                  style={ghostSquareChipStyle}
+                  onClick={() => setVideoSettingsOpen((current) => !current)}
+                >
+                  +
+                </button>
+                <button className="nodrag nopan" type="button" style={ghostSquareChipStyle}>
+                  ⇄
+                </button>
+                <button
+                  className="nodrag nopan"
+                  type="button"
+                  style={ghostSquareChipStyle}
+                  onClick={() => setVideoSettingsOpen((current) => !current)}
+                >
+                  +
+                </button>
+                <button className="nodrag nopan" type="button" style={ghostIconButtonStyle}>
+                  ⤢
+                </button>
+              </div>
+
+              <textarea
+                className="nodrag nopan"
+                value={inputPrompt}
+                onChange={(event) => {
+                  const nextPrompt = event.target.value;
+                  setInputPrompt(nextPrompt);
+                }}
+                onBlur={() => commitPrompt(inputPrompt)}
+                placeholder="描述任何你想要生成的内容"
+                rows={4}
+                style={videoTextareaStyle}
+              />
+
+              <div style={videoBottomFooterStyle}>
+                <div style={videoMetaLeftStyle}>
+                  <select
+                    className="nodrag nopan"
+                    value={String(node.data.model || availableModels[0]?.id || 'mock-video')}
+                    onChange={(event) =>
+                      onChange?.({
+                        ...node,
+                        data: {
+                          ...node.data,
+                          model: event.target.value
+                        }
+                      })
+                    }
+                    style={videoFooterSelectStyle}
+                  >
+                    {availableModels.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    type="button"
+                    className="nodrag nopan"
+                    style={videoSettingSummaryChipStyle}
+                    onClick={() => setVideoSettingsOpen((current) => !current)}
+                  >
+                    {`${String(node.data.generationMode || '文生视频')} · ${String(node.data.aspectRatio || '16:9')} · ${String(node.data.resolution || '1080p')} · ${Number(node.data.duration || 5)}s · ${Boolean(node.data.audioEnabled ?? true) ? '🔊' : '🔇'}`}
+                  </button>
+                </div>
+
+                <div style={videoActionsStyle}>
+                  <label style={ghostChipStyle} className="nodrag nopan">
+                    <span>上传</span>
+                    <input
+                      type="file"
+                      accept="video/*"
+                      style={{ display: 'none' }}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) {
+                          onVideoUpload?.(node, file);
+                          event.target.value = '';
+                        }
+                      }}
+                    />
+                  </label>
+                  <button className="nodrag nopan" type="button" style={ghostChipStyle} onClick={() => onVoiceInput?.(node)}>
+                    🎙
+                  </button>
+                  <select
+                    className="nodrag nopan"
+                    value={String(node.data.quantity || 1)}
+                    onChange={(event) =>
+                      onChange?.({
+                        ...node,
+                        data: {
+                          ...node.data,
+                          quantity: Number(event.target.value)
+                        }
+                      })
+                    }
+                    style={quantitySelectStyle}
+                  >
+                    {imageQuantityOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {`${option}x`}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="nodrag nopan"
+                    type="button"
+                    style={submitButtonStyle}
+                    disabled={node.status === 'pending' || node.status === 'running'}
+                    onClick={() => {
+                      commitPrompt(inputPrompt);
+                      onRun?.({
+                        ...node,
+                        data: {
+                          ...node.data,
+                          prompt: inputPrompt
+                        }
+                      });
+                    }}
+                  >
+                    {node.status === 'pending' || node.status === 'running' ? '生成中...' : '生成'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -636,6 +1004,12 @@ function NodeCardImpl({
               {isImageUpscale ? 'Upscale Result' : 'Output'}
             </div>
             <img src={outputImage} alt="node output" style={{ width: '100%', borderRadius: 12 }} />
+          </div>
+        ) : null}
+        {isVideo && typeof node.output?.fileUrl === 'string' ? (
+          <div>
+            <div style={{ fontSize: 12, color: '#475569', marginBottom: 6 }}>Video Output</div>
+            <video src={String(node.output.fileUrl)} controls style={{ width: '100%', borderRadius: 12 }} />
           </div>
         ) : null}
         {outputText ? (
@@ -743,6 +1117,29 @@ function textHandleStyle(side: 'left' | 'right', visible: boolean) {
   } as const;
 }
 
+function segmentedButtonStyle(active: boolean) {
+  return {
+    minHeight: 42,
+    borderRadius: 14,
+    border: 0,
+    background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
+    color: active ? '#f5f5f5' : 'rgba(255,255,255,0.5)',
+    cursor: 'pointer'
+  } as const;
+}
+
+function videoRatioButtonStyle(active: boolean) {
+  return {
+    minHeight: 52,
+    borderRadius: 14,
+    border: 0,
+    background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
+    color: active ? '#f5f5f5' : 'rgba(255,255,255,0.5)',
+    cursor: 'pointer',
+    fontSize: 14
+  } as const;
+}
+
 const textNodeWrapStyle = {
   position: 'relative',
   width: 480,
@@ -754,6 +1151,14 @@ const textNodeWrapStyle = {
 const imageNodeWrapStyle = {
   position: 'relative',
   width: 480,
+  color: '#f5f5f5',
+  pointerEvents: 'all',
+  overflow: 'visible'
+} as const;
+
+const videoNodeWrapStyle = {
+  position: 'relative',
+  width: 1120,
   color: '#f5f5f5',
   pointerEvents: 'all',
   overflow: 'visible'
@@ -803,6 +1208,19 @@ const imageNodeBoxStyle = {
   boxSizing: 'border-box'
 } as const;
 
+const videoNodeBoxStyle = {
+  width: '100%',
+  height: 630,
+  borderRadius: 42,
+  background: '#222222',
+  border: '1px solid rgba(255,255,255,0.15)',
+  padding: 28,
+  boxShadow: '0 14px 40px rgba(0,0,0,0.38)',
+  position: 'relative',
+  overflow: 'hidden',
+  boxSizing: 'border-box'
+} as const;
+
 const imagePreviewStyle = {
   width: '100%',
   height: '100%',
@@ -818,6 +1236,36 @@ const imageEmptyStyle = {
   placeItems: 'center',
   fontSize: 72,
   color: 'rgba(255,255,255,0.26)'
+} as const;
+
+const videoEmptyStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'grid',
+  placeItems: 'center',
+  background: '#242424'
+} as const;
+
+const videoPlayIconStyle = {
+  width: 108,
+  height: 108,
+  borderRadius: 24,
+  border: '8px solid rgba(255,255,255,0.14)',
+  color: 'rgba(255,255,255,0.28)',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 42,
+  lineHeight: 1,
+  paddingLeft: 8
+} as const;
+
+const videoPreviewStyle = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'contain' as const,
+  display: 'block',
+  background: '#101010',
+  borderRadius: 18
 } as const;
 
 const textPromptStyle = {
@@ -852,6 +1300,14 @@ const toolbarStyle = {
 const imageTopToolbarStyle = {
   position: 'absolute',
   top: -42,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  zIndex: 10
+} as const;
+
+const videoTopToolbarStyle = {
+  position: 'absolute',
+  top: -52,
   left: '50%',
   transform: 'translateX(-50%)',
   zIndex: 10
@@ -920,6 +1376,149 @@ const imageBottomPanelStyle = {
   padding: 16,
   display: 'grid',
   gap: 12
+} as const;
+
+const videoBottomPanelStyle = {
+  position: 'absolute',
+  left: '50%',
+  bottom: -280,
+  width: 800,
+  transform: 'translateX(-50%)',
+  minHeight: 210,
+  borderRadius: 28,
+  background: 'rgba(31,31,31,0.98)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  boxShadow: '0 18px 45px rgba(0,0,0,0.42)',
+  padding: 14,
+  display: 'grid',
+  gap: 12
+} as const;
+
+const videoBottomTopRowStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10
+} as const;
+
+const videoTextareaStyle = {
+  width: '100%',
+  minHeight: 86,
+  resize: 'none' as const,
+  background: 'transparent',
+  border: 0,
+  outline: 'none',
+  color: '#f5f5f5',
+  fontSize: 15
+} as const;
+
+const videoBottomFooterStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 14
+} as const;
+
+const videoMetaLeftStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  minWidth: 0
+} as const;
+
+const videoActionsStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10
+} as const;
+
+const ghostSquareChipStyle = {
+  width: 48,
+  height: 48,
+  borderRadius: 14,
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#f5f5f5',
+  cursor: 'pointer'
+} as const;
+
+const ghostIconButtonStyle = {
+  width: 36,
+  height: 36,
+  borderRadius: 12,
+  border: 0,
+  background: 'transparent',
+  color: '#f5f5f5',
+  marginLeft: 'auto',
+  cursor: 'pointer'
+} as const;
+
+const videoFooterSelectStyle = {
+  minWidth: 160,
+  height: 40,
+  borderRadius: 999,
+  background: 'transparent',
+  border: 0,
+  color: '#f5f5f5',
+  fontSize: 15,
+  outline: 'none',
+  padding: '0 2px',
+  appearance: 'none' as const
+} as const;
+
+const videoSettingSummaryChipStyle = {
+  height: 40,
+  borderRadius: 999,
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#f5f5f5',
+  padding: '0 14px',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap' as const
+} as const;
+
+const videoSettingsPopoverStyle = {
+  position: 'absolute',
+  left: '50%',
+  bottom: -12,
+  transform: 'translate(-50%, 100%)',
+  width: 402,
+  borderRadius: 28,
+  background: 'rgba(52,52,52,0.98)',
+  border: '1px solid rgba(255,255,255,0.06)',
+  boxShadow: '0 24px 50px rgba(0,0,0,0.38)',
+  padding: 16,
+  display: 'grid',
+  gap: 14,
+  zIndex: 20
+} as const;
+
+const videoSettingsBlockStyle = {
+  display: 'grid',
+  gap: 10
+} as const;
+
+const videoSettingsLabelStyle = {
+  fontSize: 14,
+  color: 'rgba(255,255,255,0.5)'
+} as const;
+
+const segmentedWrapStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: 8,
+  background: 'rgba(255,255,255,0.05)',
+  padding: 6,
+  borderRadius: 18
+} as const;
+
+const videoRatioGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+  gap: 8,
+  background: 'rgba(255,255,255,0.05)',
+  padding: 6,
+  borderRadius: 18
 } as const;
 
 const generatorTextareaStyle = {

@@ -407,7 +407,9 @@ function EditorInner() {
       resolution: String(node.data.resolution || VIDEO_RESOLUTION_DEFAULT),
       generationMode: String(node.data.generationMode || VIDEO_GENERATION_MODE_DEFAULT),
       audioEnabled: Boolean(node.data.audioEnabled ?? true),
-      inputAssetId: node.data.assetId ? String(node.data.assetId) : undefined
+      inputAssetId: node.data.assetId ? String(node.data.assetId) : undefined,
+      referenceImageAssetId: node.data.referenceImageAssetId ? String(node.data.referenceImageAssetId) : undefined,
+      referenceImageUrl: node.data.referenceImageUrl ? String(node.data.referenceImageUrl) : undefined
     };
 
     try {
@@ -529,6 +531,32 @@ function EditorInner() {
       formData
     });
 
+    if (node.type === 'video_generate') {
+      updateNodeLocal({
+        ...node,
+        status: 'success',
+        data: {
+          ...node.data,
+          referenceImageAssetId: data.asset.id,
+          referenceImageUrl: data.asset.thumbnailUrl || data.asset.fileUrl
+        }
+      });
+      return;
+    }
+
+    if (node.type === 'image_upload' || node.type === 'image_upscale') {
+      updateNodeLocal({
+        ...node,
+        status: 'success',
+        data: {
+          ...node.data,
+          referenceImageAssetId: data.asset.id,
+          referenceImageUrl: data.asset.thumbnailUrl || data.asset.fileUrl
+        }
+      });
+      return;
+    }
+
     updateNodeLocal({
       ...node,
       status: 'success',
@@ -562,6 +590,8 @@ function EditorInner() {
       data: {
         ...node.data,
         assetId: data.asset.id,
+        videoAssetId: data.asset.id,
+        videoPreviewUrl: data.asset.thumbnailUrl || data.asset.fileUrl,
         previewUrl: data.asset.thumbnailUrl || data.asset.fileUrl
       },
       output: {

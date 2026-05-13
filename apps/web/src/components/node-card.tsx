@@ -51,6 +51,8 @@ function NodeCardImpl({
   const outputImage =
     node.output?.thumbnailUrl || node.output?.fileUrl || node.output?.inputImageUrl || node.data.previewUrl;
   const inputImage = node.output?.inputImageUrl || node.data.previewUrl;
+  const imageReferenceUrl =
+    typeof node.data.referenceImageUrl === 'string' ? node.data.referenceImageUrl : undefined;
   const isText = node.type === 'text';
   const isImageUpload = node.type === 'image_upload';
   const isImageUpscale = node.type === 'image_upscale';
@@ -59,8 +61,22 @@ function NodeCardImpl({
   const outputVideo =
     node.output?.fileUrl && String(node.output.fileUrl).match(/\.(mp4|webm|ogg)$/i)
       ? String(node.output.fileUrl)
-      : node.data.previewUrl && String(node.data.previewUrl).match(/\.(mp4|webm|ogg)$/i)
-        ? String(node.data.previewUrl)
+      : typeof node.data.videoPreviewUrl === 'string' && node.data.videoPreviewUrl.match(/\.(mp4|webm|ogg)$/i)
+        ? String(node.data.videoPreviewUrl)
+        : node.data.previewUrl && String(node.data.previewUrl).match(/\.(mp4|webm|ogg)$/i)
+          ? String(node.data.previewUrl)
+          : undefined;
+  const outputVideoPoster =
+    typeof node.output?.thumbnailUrl === 'string'
+      ? String(node.output.thumbnailUrl)
+      : typeof node.data.videoPreviewUrl === 'string'
+        ? String(node.data.videoPreviewUrl)
+        : undefined;
+  const referenceImageUrl =
+    typeof node.data.referenceImageUrl === 'string'
+      ? node.data.referenceImageUrl
+      : typeof node.data.previewUrl === 'string' && node.data.previewUrl.match(/\.(png|jpg|jpeg|webp|gif|svg)$/i)
+        ? node.data.previewUrl
         : undefined;
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [inputPrompt, setInputPrompt] = useState(String(node.data.prompt || ''));
@@ -502,6 +518,29 @@ function NodeCardImpl({
 
         {selected ? (
           <div style={imageBottomPanelStyle} className="nodrag nopan">
+            <div style={imageBottomTopRowStyle}>
+              <label style={ghostSquareChipStyle} className="nodrag nopan">
+                <span>⇧</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) {
+                      onImageUpload?.(node, file);
+                      event.target.value = '';
+                    }
+                  }}
+                />
+              </label>
+              {imageReferenceUrl ? (
+                <div style={imageReferenceThumbWrapStyle}>
+                  <img src={imageReferenceUrl} alt="reference" style={imageReferenceThumbStyle} />
+                </div>
+              ) : null}
+            </div>
+
             <textarea
               className="nodrag nopan"
               value={inputPrompt}
@@ -644,12 +683,12 @@ function NodeCardImpl({
                 <span>⇧ 上传</span>
                 <input
                   type="file"
-                  accept="video/*"
+                  accept="image/*"
                   style={{ display: 'none' }}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (file) {
-                      onVideoUpload?.(node, file);
+                      onImageUpload?.(node, file);
                       event.target.value = '';
                     }
                   }}
@@ -667,6 +706,8 @@ function NodeCardImpl({
           >
             {outputVideo ? (
               <video src={outputVideo} controls style={videoPreviewStyle} />
+            ) : outputVideoPoster ? (
+              <img src={outputVideoPoster} alt="video source" style={videoImagePreviewStyle} />
             ) : (
               <div style={videoEmptyStyle}>
                 <div style={videoPlayIconStyle}>▶</div>
@@ -817,31 +858,26 @@ function NodeCardImpl({
 
             <div style={videoBottomPanelStyle} className="nodrag nopan">
               <div style={videoBottomTopRowStyle}>
-                <button className="nodrag nopan" type="button" style={ghostSquareChipStyle}>
-                  ⌖
-                </button>
-                <button
-                  className="nodrag nopan"
-                  type="button"
-                  style={ghostSquareChipStyle}
-                  onClick={() => setVideoSettingsOpen((current) => !current)}
-                >
-                  +
-                </button>
-                <button className="nodrag nopan" type="button" style={ghostSquareChipStyle}>
-                  ⇄
-                </button>
-                <button
-                  className="nodrag nopan"
-                  type="button"
-                  style={ghostSquareChipStyle}
-                  onClick={() => setVideoSettingsOpen((current) => !current)}
-                >
-                  +
-                </button>
-                <button className="nodrag nopan" type="button" style={ghostIconButtonStyle}>
-                  ⤢
-                </button>
+                <label style={ghostSquareChipStyle} className="nodrag nopan">
+                  <span>⇧</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        onImageUpload?.(node, file);
+                        event.target.value = '';
+                      }
+                    }}
+                  />
+                </label>
+                {referenceImageUrl ? (
+                  <div style={videoReferenceThumbWrapStyle}>
+                    <img src={referenceImageUrl} alt="reference" style={videoReferenceThumbStyle} />
+                  </div>
+                ) : null}
               </div>
 
               <textarea
@@ -891,21 +927,6 @@ function NodeCardImpl({
                 </div>
 
                 <div style={videoActionsStyle}>
-                  <label style={ghostChipStyle} className="nodrag nopan">
-                    <span>上传</span>
-                    <input
-                      type="file"
-                      accept="video/*"
-                      style={{ display: 'none' }}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) {
-                          onVideoUpload?.(node, file);
-                          event.target.value = '';
-                        }
-                      }}
-                    />
-                  </label>
                   <button className="nodrag nopan" type="button" style={ghostChipStyle} onClick={() => onVoiceInput?.(node)}>
                     🎙
                   </button>
@@ -1268,6 +1289,15 @@ const videoPreviewStyle = {
   borderRadius: 18
 } as const;
 
+const videoImagePreviewStyle = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'contain' as const,
+  display: 'block',
+  background: '#101010',
+  borderRadius: 18
+} as const;
+
 const textPromptStyle = {
   lineHeight: 1.5,
   whiteSpace: 'pre-wrap',
@@ -1378,6 +1408,30 @@ const imageBottomPanelStyle = {
   gap: 12
 } as const;
 
+const imageBottomTopRowStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'flex-start',
+  gap: 10
+} as const;
+
+const imageReferenceThumbWrapStyle = {
+  width: 48,
+  height: 48,
+  borderRadius: 14,
+  overflow: 'hidden',
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(255,255,255,0.04)',
+  flexShrink: 0
+} as const;
+
+const imageReferenceThumbStyle = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover' as const,
+  display: 'block'
+} as const;
+
 const videoBottomPanelStyle = {
   position: 'absolute',
   left: '50%',
@@ -1397,8 +1451,25 @@ const videoBottomPanelStyle = {
 const videoBottomTopRowStyle = {
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'space-between',
+  justifyContent: 'flex-start',
   gap: 10
+} as const;
+
+const videoReferenceThumbWrapStyle = {
+  width: 48,
+  height: 48,
+  borderRadius: 14,
+  overflow: 'hidden',
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(255,255,255,0.04)',
+  flexShrink: 0
+} as const;
+
+const videoReferenceThumbStyle = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover' as const,
+  display: 'block'
 } as const;
 
 const videoTextareaStyle = {

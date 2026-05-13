@@ -93,6 +93,37 @@ async function saveRemoteImageToUploads(imageUrl: string) {
   };
 }
 
+function localUploadUrlToDataUrl(fileUrl: string) {
+  const uploadPrefix = `${env.appBaseUrl}/uploads/`;
+  if (!fileUrl.startsWith(uploadPrefix)) {
+    return undefined;
+  }
+
+  const filename = fileUrl.slice(uploadPrefix.length);
+  if (!filename) {
+    return undefined;
+  }
+
+  const filepath = path.join(uploadDir, filename);
+  if (!fs.existsSync(filepath)) {
+    return undefined;
+  }
+
+  const ext = path.extname(filename).toLowerCase();
+  const mimeType =
+    ext === '.jpg' || ext === '.jpeg'
+      ? 'image/jpeg'
+      : ext === '.webp'
+        ? 'image/webp'
+        : ext === '.gif'
+          ? 'image/gif'
+          : ext === '.svg'
+            ? 'image/svg+xml'
+            : 'image/png';
+  const base64 = fs.readFileSync(filepath).toString('base64');
+  return `data:${mimeType};base64,${base64}`;
+}
+
 async function saveRemoteFileToUploads(fileUrl: string, fallbackExt = 'mp4') {
   ensureUploadDir();
 
@@ -249,7 +280,15 @@ function scheduleTaskExecution(taskId: string) {
 
       if (task.taskType === 'image_generate') {
         const aspectRatio = String(task.input.aspectRatio || '1:1');
-        const inputImages = sourceImageUrl ? [sourceImageUrl] : [];
+        const referenceImageUrl = String(task.input.referenceImageUrl || '');
+        const normalizedReferenceImageUrl =
+          localUploadUrlToDataUrl(referenceImageUrl) || referenceImageUrl;
+        const normalizedSourceImageUrl = localUploadUrlToDataUrl(sourceImageUrl) || sourceImageUrl;
+        const inputImages = referenceImageUrl
+          ? [normalizedReferenceImageUrl]
+          : sourceImageUrl
+            ? [normalizedSourceImageUrl]
+            : [];
         const generated = await generateImageWithModel({
           model: findModelById(modelId),
           prompt,
@@ -273,6 +312,7 @@ function scheduleTaskExecution(taskId: string) {
             taskType: task.taskType,
             prompt,
             references,
+            referenceImageUrl,
             sourceImageUrl,
             aspectRatio,
             quantity,
@@ -285,6 +325,7 @@ function scheduleTaskExecution(taskId: string) {
         };
         node.output = {
           ...asset,
+          referenceImageUrl: referenceImageUrl || undefined,
           inputImageUrl: sourceImageUrl || undefined,
           sourceNodeIds: sourceNodes.map((item) => item.id),
           aspectRatio,

@@ -2,11 +2,13 @@ import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addEdge,
+  applyEdgeChanges,
   applyNodeChanges,
   Background,
   Connection,
   Controls,
   Edge,
+  type EdgeChange,
   type NodeMouseHandler,
   Node,
   type ReactFlowInstance,
@@ -119,9 +121,13 @@ function EditorInner() {
     canvasY: number;
   } | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<FlowNodeData>>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setEdges] = useEdgesState<Edge>([]);
   const allNodesRef = useRef<CanvasNode[]>([]);
   const flowNodesRef = useRef<Node<FlowNodeData>[]>([]);
+  const edgesRef = useRef<Edge[]>([]);
+  const autoSaveTimerRef = useRef<number | null>(null);
+  const isHydratingRef = useRef(true);
+  const layoutDirtyRef = useRef(false);
 
   const selectedNode = useMemo(
     () => allNodes.find((node) => node.id === selectedNodeId) || null,
@@ -146,6 +152,16 @@ function EditorInner() {
     setNodes(nextFlowNodes);
   }
 
+  function syncEdges(nextEdgesOrUpdater: Edge[] | ((currentEdges: Edge[]) => Edge[])) {
+    const nextEdges =
+      typeof nextEdgesOrUpdater === 'function'
+        ? nextEdgesOrUpdater(edgesRef.current)
+        : nextEdgesOrUpdater;
+
+    edgesRef.current = nextEdges;
+    setEdges(nextEdges);
+  }
+
   async function fetchCanvasBundle() {
     if (!token || !canvasId) {
       return undefined;
@@ -159,12 +175,24 @@ function EditorInner() {
   }
 
   function handleNodesChange(changes: NodeChange<Node<FlowNodeData>>[]) {
+    const changedLayout = changes.some((change) => change.type === 'position' || change.type === 'remove');
+    if (changedLayout) {
+      layoutDirtyRef.current = true;
+    }
     const nextFlowNodes = applyNodeChanges(changes, flowNodesRef.current);
     flowNodesRef.current = nextFlowNodes;
     setNodes(nextFlowNodes);
     const nextCanvasNodes = nextFlowNodes.map((flowNode) => fromFlowNode(flowNode, canvasId || ''));
     allNodesRef.current = nextCanvasNodes;
     setAllNodes(nextCanvasNodes);
+  }
+
+  function handleEdgesChange(changes: EdgeChange<Edge>[]) {
+    if (changes.length > 0) {
+      layoutDirtyRef.current = true;
+    }
+    const nextEdges = applyEdgeChanges(changes, edgesRef.current);
+    syncEdges(nextEdges);
   }
 
   async function loadCanvas() {
@@ -175,7 +203,8 @@ function EditorInner() {
 
     setCanvas(data.canvas);
     syncNodes(data.nodes);
-    setEdges(data.edges.map(toFlowEdge));
+    syncEdges(data.edges.map(toFlowEdge));
+    isHydratingRef.current = false;
     return data;
   }
 
@@ -192,9 +221,10 @@ function EditorInner() {
         );
 
         if (matchedNode?.status === 'success' && hasVisualOutput) {
-          setCanvas(data.canvas);
-          syncNodes(data.nodes);
-          setEdges(data.edges.map(toFlowEdge));
+          updateNodeLocal({
+            ...matchedNode,
+            position: allNodesRef.current.find((item) => item.id === matchedNode.id)?.position || matchedNode.position
+          });
           return {
             status: 'success' as const,
             node: matchedNode
@@ -226,7 +256,18 @@ function EditorInner() {
 
         return {
           status: 'success' as const,
-          node: currentNode
+          node: {
+            ...currentNode,
+            status: 'success',
+            data: {
+              ...currentNode.data,
+              previewUrl: currentNode.type === 'text' ? currentNode.data.previewUrl : resultImageUrl
+            },
+            output: {
+              ...(currentNode.output || {}),
+              ...fallbackResult
+            }
+          }
         };
       }
 
@@ -308,13 +349,13 @@ function EditorInner() {
     setCreateMenu(null);
   }
 
-  async function saveCanvas() {
+  async function saveCanvas(showAlert = true) {
     if (!token || !canvasId || !canvas) {
       return;
     }
 
-    const normalizedNodes = nodes.map((node) => fromFlowNode(node, canvasId));
-    const normalizedEdges: CanvasEdge[] = edges.map((edge) => ({
+    const normalizedNodes = flowNodesRef.current.map((node) => fromFlowNode(node, canvasId));
+    const normalizedEdges: CanvasEdge[] = edgesRef.current.map((edge) => ({
       id: edge.id,
       canvasId,
       sourceNodeId: edge.source,
@@ -340,8 +381,25 @@ function EditorInner() {
 
     setCanvas(data.canvas);
     syncNodes(data.nodes);
-    setEdges(data.edges.map(toFlowEdge));
-    alert('Canvas saved.');
+    syncEdges(data.edges.map(toFlowEdge));
+    if (showAlert) {
+      alert('Canvas saved.');
+    }
+  }
+
+  function scheduleAutoSave() {
+    if (isHydratingRef.current) {
+      return;
+    }
+
+    if (autoSaveTimerRef.current) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      void saveCanvas(false);
+    }, 500);
   }
 
   async function runNode(node: CanvasNode) {
@@ -465,7 +523,28 @@ function EditorInner() {
         const result = await syncNodeResultAfterTaskSuccess(nodeId, task.result);
 
         if (result.status === 'timeout') {
-          await loadCanvas();
+          const currentNode = allNodesRef.current.find((item) => item.id === nodeId);
+          if (currentNode && task.result) {
+            const resultImageUrl =
+              typeof task.result.thumbnailUrl === 'string'
+                ? task.result.thumbnailUrl
+                : typeof task.result.fileUrl === 'string'
+                  ? task.result.fileUrl
+                  : currentNode.data.previewUrl;
+
+            updateNodeLocal({
+              ...currentNode,
+              status: 'success',
+              data: {
+                ...currentNode.data,
+                previewUrl: currentNode.type === 'text' ? currentNode.data.previewUrl : resultImageUrl
+              },
+              output: {
+                ...(currentNode.output || {}),
+                ...task.result
+              }
+            });
+          }
         }
         return;
       }
@@ -643,6 +722,23 @@ function EditorInner() {
     void loadAssets();
     void loadModels();
   }, [token, canvasId]);
+
+  useEffect(() => {
+    if (!layoutDirtyRef.current) {
+      return;
+    }
+
+    scheduleAutoSave();
+    layoutDirtyRef.current = false;
+  }, [nodes, edges]);
+
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        window.clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     function handleWindowClick() {
@@ -846,25 +942,28 @@ function EditorInner() {
           edges={edges}
           onInit={setFlowInstance}
           onNodesChange={handleNodesChange}
-          onEdgesChange={onEdgesChange}
+          onEdgesChange={handleEdgesChange}
           onNodeClick={handleNodeClick}
           onPaneClick={handlePaneClick}
           onConnect={(params: Connection) =>
-            setEdges((eds) =>
-              addEdge(
-                {
-                  ...params,
-                  id: `${params.source}-${params.target}-${Date.now()}`,
-                  type: 'canvas-edge',
-                  style: {
-                    stroke: '#c0c0c0',
-                    strokeWidth: 2,
-                    strokeLinecap: 'round'
-                  }
-                },
-                eds
-              )
-            )
+            {
+              layoutDirtyRef.current = true;
+              syncEdges((eds) =>
+                addEdge(
+                  {
+                    ...params,
+                    id: `${params.source}-${params.target}-${Date.now()}`,
+                    type: 'canvas-edge',
+                    style: {
+                      stroke: '#c0c0c0',
+                      strokeWidth: 2,
+                      strokeLinecap: 'round'
+                    }
+                  },
+                  eds
+                )
+              );
+            }
           }
           nodesConnectable
           elementsSelectable

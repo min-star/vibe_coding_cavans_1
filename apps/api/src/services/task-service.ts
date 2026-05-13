@@ -181,8 +181,17 @@ function findNodeContext(canvasId: string, nodeId: string) {
 function getIncomingSourceNodes(
   db: ReturnType<typeof readDb>,
   canvasId: string,
-  nodeId: string
+  nodeId: string,
+  explicitSourceNodeIds?: string[]
 ): CanvasNode[] {
+  if (Array.isArray(explicitSourceNodeIds) && explicitSourceNodeIds.length > 0) {
+    return explicitSourceNodeIds
+      .map((sourceNodeId) =>
+        db.nodes.find((node) => node.id === sourceNodeId && node.canvasId === canvasId)
+      )
+      .filter(Boolean) as CanvasNode[];
+  }
+
   const incomingEdges = db.edges.filter(
     (edge: CanvasEdge) => edge.canvasId === canvasId && edge.targetNodeId === nodeId
   );
@@ -206,6 +215,22 @@ function getVideoSourceNodes(nodes: CanvasNode[]) {
     const mimeType = String((node.output?.metadata as Record<string, unknown> | undefined)?.mimeType || '');
     return fileUrl.endsWith('.mp4') || fileUrl.endsWith('.webm') || mimeType.startsWith('video/');
   });
+}
+
+function getTextSourceContents(nodes: CanvasNode[]) {
+  return nodes
+    .map((node) => {
+      if (typeof node.output?.text === 'string' && node.output.text.trim()) {
+        return node.output.text.trim();
+      }
+
+      if (node.type === 'text' && typeof node.data.prompt === 'string' && node.data.prompt.trim()) {
+        return node.data.prompt.trim();
+      }
+
+      return '';
+    })
+    .filter(Boolean);
 }
 
 function scheduleTaskExecution(taskId: string) {
@@ -240,11 +265,15 @@ function scheduleTaskExecution(taskId: string) {
       const references = Array.isArray(task.input.references)
         ? (task.input.references as string[])
         : [];
+      const sourceNodeIds = Array.isArray(task.input.sourceNodeIds)
+        ? task.input.sourceNodeIds.map((item) => String(item))
+        : [];
       const modelId = String(task.input.model || '');
       const quantity = Number(task.input.quantity || 1);
-      const sourceNodes = getIncomingSourceNodes(db, task.canvasId, task.nodeId);
+      const sourceNodes = getIncomingSourceNodes(db, task.canvasId, task.nodeId, sourceNodeIds);
       const sourceImageNode = getFirstImageSource(sourceNodes);
       const sourceVideoNodes = getVideoSourceNodes(sourceNodes);
+      const sourceTextContents = getTextSourceContents(sourceNodes);
       const sourceImageUrl = String(
         sourceImageNode?.output?.fileUrl ||
           sourceImageNode?.output?.thumbnailUrl ||
@@ -280,6 +309,13 @@ function scheduleTaskExecution(taskId: string) {
 
       if (task.taskType === 'image_generate') {
         const aspectRatio = String(task.input.aspectRatio || '1:1');
+        const fallbackReferenceTexts = references.filter(
+          (item) => item && !/^https?:\/\//i.test(item) && !/^data:/i.test(item)
+        );
+        const connectedPrompt = (sourceTextContents.length > 0 ? sourceTextContents : fallbackReferenceTexts).join('\n\n');
+        const effectivePrompt = connectedPrompt
+          ? `${prompt}\n\nConnected text inputs:\n${connectedPrompt}`.trim()
+          : prompt;
         const referenceImageUrl = String(task.input.referenceImageUrl || '');
         const referenceImageUrls = Array.isArray(task.input.referenceImageUrls)
           ? task.input.referenceImageUrls.map((item) => String(item))
@@ -299,7 +335,7 @@ function scheduleTaskExecution(taskId: string) {
             : [];
         const generated = await generateImageWithModel({
           model: findModelById(modelId),
-          prompt,
+          prompt: effectivePrompt,
           references,
           quantity,
           aspectRatio,
@@ -318,10 +354,11 @@ function scheduleTaskExecution(taskId: string) {
           thumbnailUrl: storedImage.thumbnailUrl,
           metadata: {
             taskType: task.taskType,
-            prompt,
+            prompt: effectivePrompt,
             references,
             referenceImageUrl,
             referenceImageUrls,
+            connectedTextInputs: sourceTextContents,
             sourceImageUrl,
             aspectRatio,
             quantity,
@@ -336,6 +373,8 @@ function scheduleTaskExecution(taskId: string) {
           ...asset,
           referenceImageUrl: referenceImageUrl || undefined,
           referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+          connectedTextInputs: sourceTextContents,
+          effectivePrompt,
           inputImageUrl: sourceImageUrl || undefined,
           sourceNodeIds: sourceNodes.map((item) => item.id),
           aspectRatio,

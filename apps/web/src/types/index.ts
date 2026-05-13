@@ -32,6 +32,8 @@ export interface CanvasNodeData {
   videoAssetId?: string;
   referenceImageUrl?: string;
   referenceImageAssetId?: string;
+  referenceImageUrls?: string[];
+  referenceImageAssetIds?: string[];
   aspectRatio?: '1:1' | '4:3' | '3:4' | '16:9' | '9:16' | '3:2' | '2:3' | '21:9' | 'adaptive';
   resolution?: '480p' | '720p' | '1080p';
   generationMode?: '文生视频' | '首帧' | '首尾帧';

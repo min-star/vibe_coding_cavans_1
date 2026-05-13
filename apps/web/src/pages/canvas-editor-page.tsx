@@ -409,7 +409,10 @@ function EditorInner() {
       audioEnabled: Boolean(node.data.audioEnabled ?? true),
       inputAssetId: node.data.assetId ? String(node.data.assetId) : undefined,
       referenceImageAssetId: node.data.referenceImageAssetId ? String(node.data.referenceImageAssetId) : undefined,
-      referenceImageUrl: node.data.referenceImageUrl ? String(node.data.referenceImageUrl) : undefined
+      referenceImageUrl: node.data.referenceImageUrl ? String(node.data.referenceImageUrl) : undefined,
+      referenceImageUrls: Array.isArray(node.data.referenceImageUrls)
+        ? node.data.referenceImageUrls.map((item) => String(item))
+        : undefined
     };
 
     try {
@@ -532,26 +535,42 @@ function EditorInner() {
     });
 
     if (node.type === 'video_generate') {
+      const currentReferenceUrls = Array.isArray(node.data.referenceImageUrls)
+        ? node.data.referenceImageUrls.map((item) => String(item))
+        : [];
+      const currentReferenceAssetIds = Array.isArray(node.data.referenceImageAssetIds)
+        ? node.data.referenceImageAssetIds.map((item) => String(item))
+        : [];
       updateNodeLocal({
         ...node,
         status: 'success',
         data: {
           ...node.data,
           referenceImageAssetId: data.asset.id,
-          referenceImageUrl: data.asset.thumbnailUrl || data.asset.fileUrl
+          referenceImageUrl: data.asset.thumbnailUrl || data.asset.fileUrl,
+          referenceImageAssetIds: [...currentReferenceAssetIds, data.asset.id],
+          referenceImageUrls: [...currentReferenceUrls, data.asset.thumbnailUrl || data.asset.fileUrl]
         }
       });
       return;
     }
 
     if (node.type === 'image_upload' || node.type === 'image_upscale') {
+      const currentReferenceUrls = Array.isArray(node.data.referenceImageUrls)
+        ? node.data.referenceImageUrls.map((item) => String(item))
+        : [];
+      const currentReferenceAssetIds = Array.isArray(node.data.referenceImageAssetIds)
+        ? node.data.referenceImageAssetIds.map((item) => String(item))
+        : [];
       updateNodeLocal({
         ...node,
         status: 'success',
         data: {
           ...node.data,
           referenceImageAssetId: data.asset.id,
-          referenceImageUrl: data.asset.thumbnailUrl || data.asset.fileUrl
+          referenceImageUrl: data.asset.thumbnailUrl || data.asset.fileUrl,
+          referenceImageAssetIds: [...currentReferenceAssetIds, data.asset.id],
+          referenceImageUrls: [...currentReferenceUrls, data.asset.thumbnailUrl || data.asset.fileUrl]
         }
       });
       return;

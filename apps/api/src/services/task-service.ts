@@ -281,11 +281,19 @@ function scheduleTaskExecution(taskId: string) {
       if (task.taskType === 'image_generate') {
         const aspectRatio = String(task.input.aspectRatio || '1:1');
         const referenceImageUrl = String(task.input.referenceImageUrl || '');
+        const referenceImageUrls = Array.isArray(task.input.referenceImageUrls)
+          ? task.input.referenceImageUrls.map((item) => String(item))
+          : referenceImageUrl
+            ? [referenceImageUrl]
+            : [];
         const normalizedReferenceImageUrl =
           localUploadUrlToDataUrl(referenceImageUrl) || referenceImageUrl;
+        const normalizedReferenceImageUrls = referenceImageUrls
+          .map((item) => localUploadUrlToDataUrl(item) || item)
+          .filter(Boolean);
         const normalizedSourceImageUrl = localUploadUrlToDataUrl(sourceImageUrl) || sourceImageUrl;
-        const inputImages = referenceImageUrl
-          ? [normalizedReferenceImageUrl]
+        const inputImages = normalizedReferenceImageUrls.length > 0
+          ? normalizedReferenceImageUrls
           : sourceImageUrl
             ? [normalizedSourceImageUrl]
             : [];
@@ -313,6 +321,7 @@ function scheduleTaskExecution(taskId: string) {
             prompt,
             references,
             referenceImageUrl,
+            referenceImageUrls,
             sourceImageUrl,
             aspectRatio,
             quantity,
@@ -326,6 +335,7 @@ function scheduleTaskExecution(taskId: string) {
         node.output = {
           ...asset,
           referenceImageUrl: referenceImageUrl || undefined,
+          referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
           inputImageUrl: sourceImageUrl || undefined,
           sourceNodeIds: sourceNodes.map((item) => item.id),
           aspectRatio,

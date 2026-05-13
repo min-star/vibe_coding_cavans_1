@@ -51,8 +51,11 @@ function NodeCardImpl({
   const outputImage =
     node.output?.thumbnailUrl || node.output?.fileUrl || node.output?.inputImageUrl || node.data.previewUrl;
   const inputImage = node.output?.inputImageUrl || node.data.previewUrl;
-  const imageReferenceUrl =
-    typeof node.data.referenceImageUrl === 'string' ? node.data.referenceImageUrl : undefined;
+  const imageReferenceUrls = Array.isArray(node.data.referenceImageUrls)
+    ? node.data.referenceImageUrls.map((item) => String(item))
+    : typeof node.data.referenceImageUrl === 'string'
+      ? [node.data.referenceImageUrl]
+      : [];
   const isText = node.type === 'text';
   const isImageUpload = node.type === 'image_upload';
   const isImageUpscale = node.type === 'image_upscale';
@@ -517,9 +520,9 @@ function NodeCardImpl({
         </div>
 
         {selected ? (
-          <div style={imageBottomPanelStyle} className="nodrag nopan">
-            <div style={imageBottomTopRowStyle}>
-              <label style={ghostSquareChipStyle} className="nodrag nopan">
+            <div style={imageBottomPanelStyle} className="nodrag nopan">
+              <div style={imageBottomTopRowStyle}>
+                <label style={ghostSquareChipStyle} className="nodrag nopan">
                 <span>⇧</span>
                 <input
                   type="file"
@@ -531,15 +534,43 @@ function NodeCardImpl({
                       onImageUpload?.(node, file);
                       event.target.value = '';
                     }
-                  }}
-                />
-              </label>
-              {imageReferenceUrl ? (
-                <div style={imageReferenceThumbWrapStyle}>
-                  <img src={imageReferenceUrl} alt="reference" style={imageReferenceThumbStyle} />
-                </div>
-              ) : null}
-            </div>
+                    }}
+                  />
+                </label>
+                {imageReferenceUrls.length > 0 ? (
+                  <div style={imageReferenceThumbListStyle}>
+                    {imageReferenceUrls.map((url, index) => (
+                      <div key={`${url}-${index}`} style={imageReferenceThumbWrapStyle}>
+                        <img src={url} alt="reference" style={imageReferenceThumbStyle} />
+                        <button
+                          type="button"
+                          className="nodrag nopan"
+                          style={thumbDeleteButtonStyle}
+                          onClick={() => {
+                            const nextUrls = imageReferenceUrls.filter((_, itemIndex) => itemIndex !== index);
+                            const currentIds = Array.isArray(node.data.referenceImageAssetIds)
+                              ? node.data.referenceImageAssetIds.map((item) => String(item))
+                              : [];
+                            const nextIds = currentIds.filter((_, itemIndex) => itemIndex !== index);
+                            onChange?.({
+                              ...node,
+                              data: {
+                                ...node.data,
+                                referenceImageUrls: nextUrls,
+                                referenceImageUrl: nextUrls[0],
+                                referenceImageAssetIds: nextIds,
+                                referenceImageAssetId: nextIds[0]
+                              }
+                            });
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
 
             <textarea
               className="nodrag nopan"
@@ -1422,7 +1453,8 @@ const imageReferenceThumbWrapStyle = {
   overflow: 'hidden',
   border: '1px solid rgba(255,255,255,0.08)',
   background: 'rgba(255,255,255,0.04)',
-  flexShrink: 0
+  flexShrink: 0,
+  position: 'relative'
 } as const;
 
 const imageReferenceThumbStyle = {
@@ -1430,6 +1462,31 @@ const imageReferenceThumbStyle = {
   height: '100%',
   objectFit: 'cover' as const,
   display: 'block'
+} as const;
+
+const imageReferenceThumbListStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap' as const
+} as const;
+
+const thumbDeleteButtonStyle = {
+  position: 'absolute',
+  top: 2,
+  right: 2,
+  width: 18,
+  height: 18,
+  borderRadius: 999,
+  border: 0,
+  background: 'rgba(0,0,0,0.68)',
+  color: '#ffffff',
+  fontSize: 12,
+  lineHeight: 1,
+  display: 'grid',
+  placeItems: 'center',
+  cursor: 'pointer',
+  padding: 0
 } as const;
 
 const videoBottomPanelStyle = {

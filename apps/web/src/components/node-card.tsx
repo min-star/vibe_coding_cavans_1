@@ -75,12 +75,11 @@ function NodeCardImpl({
       : typeof node.data.videoPreviewUrl === 'string'
         ? String(node.data.videoPreviewUrl)
         : undefined;
-  const referenceImageUrl =
-    typeof node.data.referenceImageUrl === 'string'
-      ? node.data.referenceImageUrl
-      : typeof node.data.previewUrl === 'string' && node.data.previewUrl.match(/\.(png|jpg|jpeg|webp|gif|svg)$/i)
-        ? node.data.previewUrl
-        : undefined;
+  const videoReferenceImageUrls = Array.isArray(node.data.referenceImageUrls)
+    ? node.data.referenceImageUrls.map((item) => String(item))
+    : typeof node.data.referenceImageUrl === 'string'
+      ? [node.data.referenceImageUrl]
+      : [];
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [inputPrompt, setInputPrompt] = useState(String(node.data.prompt || ''));
   const [hovered, setHovered] = useState(false);
@@ -904,9 +903,37 @@ function NodeCardImpl({
                     }}
                   />
                 </label>
-                {referenceImageUrl ? (
-                  <div style={videoReferenceThumbWrapStyle}>
-                    <img src={referenceImageUrl} alt="reference" style={videoReferenceThumbStyle} />
+                {videoReferenceImageUrls.length > 0 ? (
+                  <div style={videoReferenceThumbListStyle}>
+                    {videoReferenceImageUrls.map((url, index) => (
+                      <div key={`${url}-${index}`} style={videoReferenceThumbWrapStyle}>
+                        <img src={url} alt="reference" style={videoReferenceThumbStyle} />
+                        <button
+                          type="button"
+                          className="nodrag nopan"
+                          style={thumbDeleteButtonStyle}
+                          onClick={() => {
+                            const nextUrls = videoReferenceImageUrls.filter((_, itemIndex) => itemIndex !== index);
+                            const currentIds = Array.isArray(node.data.referenceImageAssetIds)
+                              ? node.data.referenceImageAssetIds.map((item) => String(item))
+                              : [];
+                            const nextIds = currentIds.filter((_, itemIndex) => itemIndex !== index);
+                            onChange?.({
+                              ...node,
+                              data: {
+                                ...node.data,
+                                referenceImageUrls: nextUrls,
+                                referenceImageUrl: nextUrls[0],
+                                referenceImageAssetIds: nextIds,
+                                referenceImageAssetId: nextIds[0]
+                              }
+                            });
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 ) : null}
               </div>
@@ -1519,7 +1546,8 @@ const videoReferenceThumbWrapStyle = {
   overflow: 'hidden',
   border: '1px solid rgba(255,255,255,0.08)',
   background: 'rgba(255,255,255,0.04)',
-  flexShrink: 0
+  flexShrink: 0,
+  position: 'relative'
 } as const;
 
 const videoReferenceThumbStyle = {
@@ -1527,6 +1555,13 @@ const videoReferenceThumbStyle = {
   height: '100%',
   objectFit: 'cover' as const,
   display: 'block'
+} as const;
+
+const videoReferenceThumbListStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap' as const
 } as const;
 
 const videoTextareaStyle = {

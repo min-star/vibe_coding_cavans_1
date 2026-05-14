@@ -419,6 +419,21 @@ function scheduleTaskExecution(taskId: string) {
         const resolution = String(task.input.resolution || '1080p');
         const generationMode = String(task.input.generationMode || '文生视频');
         const audioEnabled = Boolean(task.input.audioEnabled ?? true);
+        const referenceImageUrl = String(task.input.referenceImageUrl || '');
+        const referenceImageUrls = Array.isArray(task.input.referenceImageUrls)
+          ? task.input.referenceImageUrls.map((item) => String(item))
+          : referenceImageUrl
+            ? [referenceImageUrl]
+            : [];
+        const normalizedReferenceImageUrls = referenceImageUrls
+          .map((item) => localUploadUrlToDataUrl(item) || item)
+          .filter(Boolean);
+        const normalizedSourceImageUrl = localUploadUrlToDataUrl(sourceImageUrl) || sourceImageUrl;
+        const inputImageUrls = normalizedReferenceImageUrls.length > 0
+          ? normalizedReferenceImageUrls
+          : normalizedSourceImageUrl
+            ? [normalizedSourceImageUrl]
+            : [];
         const generated = await generateVideoWithModel({
           model: findModelById(modelId),
           prompt,
@@ -429,7 +444,7 @@ function scheduleTaskExecution(taskId: string) {
           generationMode,
           audioEnabled,
           inputVideoUrl: sourceVideoUrl || undefined,
-          inputImageUrls: sourceImageUrl ? [sourceImageUrl] : []
+          inputImageUrls
         });
 
         const storedVideo = generated.videoUrl
@@ -438,6 +453,8 @@ function scheduleTaskExecution(taskId: string) {
               type: 'mock-video',
               prompt,
               references,
+              referenceImageUrl,
+              referenceImageUrls,
               sourceImageUrl,
               sourceVideoUrl,
               duration: task.input.duration || 5,
@@ -471,6 +488,8 @@ function scheduleTaskExecution(taskId: string) {
             prompt,
             duration: task.input.duration || 5,
             references,
+            referenceImageUrl,
+            referenceImageUrls,
             sourceImageUrl,
             sourceVideoUrl,
             aspectRatio,
@@ -484,6 +503,8 @@ function scheduleTaskExecution(taskId: string) {
         };
         node.output = {
           ...asset,
+          referenceImageUrl: referenceImageUrl || undefined,
+          referenceImageUrls: referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
           inputImageUrl: sourceImageUrl || undefined,
           sourceVideoUrl: sourceVideoUrl || undefined,
           sourceNodeIds: sourceNodes.map((item) => item.id)
